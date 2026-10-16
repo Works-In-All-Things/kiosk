@@ -57,6 +57,55 @@ ask() {
     ANSWER=${ANSWER:-$default}
 }
 
+# Asks until the answer passes a check (the name of a function), and leaves it in ANSWER. When no one is there to
+# ask, the default must pass, or it stops with the problem.
+ask_until() {
+    local check=$1 question=$2 default=$3 problem=$4
+    while true; do
+        ask "$question" "$default"
+        "$check" "$ANSWER" && return
+        can_ask || die "$problem"
+        warn "$problem"
+    done
+}
+
+# Shows the common time zones and sets ANSWER to the one chosen: a number or name from the list (such as 2 or
+# central), or any time zone name (such as Europe/London). Enter keeps the current one.
+choose_timezone() {
+    local current
+    current=$(timedatectl show --property=Timezone --value 2>/dev/null || true)
+    current=${current:-UTC}
+    if can_ask; then
+        printf '\nTime zone (the screen times and the nightly restart use it). It is now %s.\n' "$current"
+        printf '  %s\n' "1) Eastern    America/New_York" "2) Central    America/Chicago" \
+            "3) Mountain   America/Denver" "4) Arizona    America/Phoenix" "5) Pacific    America/Los_Angeles" \
+            "6) Alaska     America/Anchorage" "7) Hawaii     Pacific/Honolulu" \
+            "Or type another, such as Europe/London (see them all with: timedatectl list-timezones)."
+    fi
+    while true; do
+        ask "Time zone (a number, or a name)" "$current"
+        ANSWER=$(timezone_name "$ANSWER")
+        is_timezone "$ANSWER" && return
+        can_ask || die "Unknown time zone: $ANSWER"
+        warn "Unknown time zone: $ANSWER. Choose a number from the list, or type a name such as America/Chicago."
+    done
+}
+
+# Turns a choice from the time zone list (a number or a name such as "central") into the time zone's full name.
+# Anything else is passed through unchanged.
+timezone_name() {
+    case ${1,,} in
+        1 | eastern) echo America/New_York ;;
+        2 | central) echo America/Chicago ;;
+        3 | mountain) echo America/Denver ;;
+        4 | arizona) echo America/Phoenix ;;
+        5 | pacific) echo America/Los_Angeles ;;
+        6 | alaska) echo America/Anchorage ;;
+        7 | hawaii) echo Pacific/Honolulu ;;
+        *) echo "$1" ;;
+    esac
+}
+
 # Asks a yes/no question. The default is used when no one is there to ask.
 confirm() {
     ask "$1 (y/n)" "${2:-y}"
@@ -123,6 +172,18 @@ EOF
 
 # Checks a 24-hour time like 22:00.
 is_time() { [[ $1 =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; }
+
+# Checks a time zone name, such as America/Chicago.
+is_timezone() { [[ -n $1 && $1 != *..* && -f /usr/share/zoneinfo/$1 ]]; }
+
+# Checks a screen rotation.
+is_rotation() { [[ $1 =~ ^(0|90|180|270)$ ]]; }
+
+# Checks a 24-hour time, or blank.
+is_time_or_blank() { [[ -z $1 ]] || is_time "$1"; }
+
+# Checks a 24-hour time, or "off" (or blank) for none.
+is_time_or_off() { [[ -z $1 || $1 == off ]] || is_time "$1"; }
 
 # Checks a web address.
 is_url() { [[ $1 =~ ^https?://[^[:space:]]+$ ]]; }
@@ -211,37 +272,39 @@ cmd_install() {
     printf '\n\033[1mWorks In All Things Kiosk %s\033[0m on %s\n\n' "$KIOSK_VERSION" "$DISTRO_NAME"
     [[ -n $(get_setting URL) ]] && info "Kiosk is already installed. Your settings are kept unless you change them."
 
-    # Questions first, so the rest runs without stopping.
+    # Questions first, so the rest runs without stopping. A wrong answer is asked again.
     url=${url:-$(get_setting URL)}
     if ! is_url "$url"; then
-        ask "The address to show (the Player URL)" ""
+        ask_until is_url "The address to show (the Player URL)" "" "The address must start with https:// or http://."
         url=$ANSWER
     fi
-    is_url "$url" || die "The address must start with https:// or http://. Run the installer again with it."
     if [[ $url == http://* ]]; then
         info "This is an http:// address. Kiosk tells the browser to treat it as secure, so Signage can still store slides for offline play."
     fi
 
-    local current_timezone
-    current_timezone=$(timedatectl show --property=Timezone --value 2>/dev/null || true)
     if [[ -z $timezone ]]; then
-        ask "Time zone (for the screen times and the nightly restart)" "${current_timezone:-UTC}"
+        choose_timezone
         timezone=$ANSWER
+    else
+        timezone=$(timezone_name "$timezone")
+        is_timezone "$timezone" || die "Unknown time zone: $timezone (for example America/Chicago, or central)."
     fi
-    [[ -f /usr/share/zoneinfo/$timezone ]] || die "Unknown time zone: $timezone (for example America/Chicago)."
 
     if [[ -z $rotation ]]; then
         rotation=$(get_setting ROTATION)
-        ask "Screen rotation: 0, 90, 180 or 270" "${rotation:-0}"
+        ask_until is_rotation "Screen rotation: 0, 90, 180 or 270" "${rotation:-0}" "Rotation must be 0, 90, 180 or 270."
         rotation=$ANSWER
     fi
-    [[ $rotation =~ ^(0|90|180|270)$ ]] || die "Rotation must be 0, 90, 180 or 270."
+    is_rotation "$rotation" || die "Rotation must be 0, 90, 180 or 270."
 
     if [[ $screen_set == no ]]; then
-        ask "Turn the screen off each day at (HH:MM, blank to keep it on)" "$(get_setting SCREEN_OFF)"
+        ask_until is_time_or_blank "Turn the screen off each day at (24-hour, like 22:00; blank keeps it on)" \
+            "$(get_setting SCREEN_OFF)" "Use a 24-hour time like 22:00, or leave it blank."
         screen_off=$ANSWER
+        screen_on=""
         if [[ -n $screen_off ]]; then
-            ask "Turn the screen on each day at (HH:MM)" "$(get_setting SCREEN_ON)"
+            ask_until is_time "Turn the screen on each day at (24-hour, like 06:30)" "$(get_setting SCREEN_ON)" \
+                "Use a 24-hour time like 06:30."
             screen_on=$ANSWER
         fi
     fi
@@ -255,11 +318,12 @@ cmd_install() {
         local default_restart
         default_restart=$(get_setting RESTART_TIME)
         [[ -e $CONFIG ]] || default_restart=03:30
-        ask "Restart the computer each day at (HH:MM, or 'off')" "${default_restart:-off}"
+        ask_until is_time_or_off "Restart the computer each day at (24-hour, like 03:30, or 'off')" \
+            "${default_restart:-off}" "Use a 24-hour time like 03:30, or 'off'."
         restart_time=$ANSWER
     fi
+    is_time_or_off "$restart_time" || die "The restart time must be a 24-hour time like 03:30, or 'off'."
     [[ $restart_time == off ]] && restart_time=""
-    [[ -z $restart_time ]] || is_time "$restart_time" || die "The restart time must be a 24-hour time like 03:30, or 'off'."
 
     local display_manager=""
     if [[ -L $UNIT_DIR/display-manager.service ]]; then
@@ -685,7 +749,7 @@ Works In All Things Kiosk $KIOSK_VERSION: shows one web address full screen, fro
   sudo kiosk uninstall                Remove Kiosk
 
 Install options (for installing without questions):
-  --url <address> --timezone <zone> --rotation <0|90|180|270> --screen-off HH:MM --screen-on HH:MM
+  --url <address> --timezone <zone, such as America/Chicago or central> --rotation <0|90|180|270> --screen-off HH:MM --screen-on HH:MM
   --restart-time HH:MM|off --browser auto|native|flatpak --yes --reboot
 
 Help and support: https://worksinallthings.com/kiosk/

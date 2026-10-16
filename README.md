@@ -18,15 +18,17 @@ Free and open source (MIT license).
    It asks for your password (with sudo). No curl? Use `wget -qO- https://worksinallthings.com/kiosk/install.sh | bash`.
    `… | sudo bash` works too.
 
-3. Answer the questions: the **address to show** (paste the Player URL), the time zone, screen rotation, when to
-   turn the screen off and on (optional) and when to restart each night (3:30 am unless you change it).
+3. Answer the questions: the **address to show** (paste the Player URL), the **time zone** (pick a number from
+   the US list, or type any zone name such as `Europe/London`), screen rotation, when to turn the screen off and
+   on (optional) and when to restart each night (3:30 am unless you change it). Press Enter to keep what's shown
+   in brackets. A mistyped answer is simply asked again.
 4. Restart. From then on the computer shows the address whenever it's turned on.
 
 To install without questions, pass the answers:
 
 ```bash
 curl -fsSL https://worksinallthings.com/kiosk/install.sh | bash -s -- \
-    --url https://rock.example.org/signage/tv/AbCdE --timezone America/Chicago --yes --reboot
+    --url https://rock.example.org/signage/tv/AbCdE --timezone central --yes --reboot
 ```
 
 Running the installer again changes the settings and keeps anything you don't change.
