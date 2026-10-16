@@ -12,10 +12,11 @@ Free and open source (MIT license).
 2. Connect it to the network (wired, or Wi-Fi when you install the distribution), log in and run:
 
    ```bash
-   curl -fsSL https://worksinallthings.com/kiosk/install.sh | sudo bash
+   curl -fsSL https://worksinallthings.com/kiosk/install.sh | bash
    ```
 
-   No curl? Use `wget -qO- https://worksinallthings.com/kiosk/install.sh | sudo bash`.
+   It asks for your password (with sudo). No curl? Use `wget -qO- https://worksinallthings.com/kiosk/install.sh | bash`.
+   `… | sudo bash` works too.
 
 3. Answer the questions: the **address to show** (paste the Player URL), the time zone, screen rotation, when to
    turn the screen off and on (optional) and when to restart each night (3:30 am unless you change it).
@@ -24,7 +25,7 @@ Free and open source (MIT license).
 To install without questions, pass the answers:
 
 ```bash
-curl -fsSL https://worksinallthings.com/kiosk/install.sh | sudo bash -s -- \
+curl -fsSL https://worksinallthings.com/kiosk/install.sh | bash -s -- \
     --url https://rock.example.org/signage/tv/AbCdE --timezone America/Chicago --yes --reboot
 ```
 
@@ -124,5 +125,5 @@ screen) back on, and leaves the installed packages, such as cage and Chromium, i
 
 - `shellcheck -x kiosk install.sh lib/session lib/start lib/distro.sh` must be clean.
 - From a copy of this repository, `sudo ./install.sh` installs that copy.
-- To install a branch for testing: `curl -fsSL … | sudo KIOSK_REF=<branch> bash`.
+- To install a branch for testing: `curl -fsSL … | KIOSK_REF=<branch> bash`.
 - The release test is in [TESTING.md](TESTING.md).

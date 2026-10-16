@@ -39,8 +39,10 @@ just as well for the Parent Page number board, or any page that should fill a sc
 - `shellcheck` is clean.
 - A full install on Ubuntu 24.04 in a container with systemd: packages, the `kiosk` user, the login session on
   tty1 (seat0), the timers in the right time zone, settings with unusual characters, and the commands.
-- The questions on Ubuntu 26.04, whose sudo-rs leaves a piped install unable to read answers inside `$(...)`
-  or change terminal settings; the installer avoids both.
+- The questions on Ubuntu 26.04, typed into a real interactive shell, with both `… | bash` and `… | sudo bash`.
+  Its sudo-rs freezes any program that reads the keyboard unless it's the one sudo started, so `install.sh` hands
+  over to the installer with `exec` (or runs sudo itself with the keyboard as input), and the installer never
+  reads answers inside `$(...)` or changes terminal settings.
 - Not checked yet: anything on a real screen, Debian, Raspberry Pi OS, Fedora, Arch or openSUSE (their package
   mirrors and Flathub can't be reached from where it was written). That's what TESTING.md is for.
 
