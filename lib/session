@@ -7,6 +7,7 @@ set -uo pipefail
 CONFIG=/etc/kiosk/kiosk.conf
 URL=""
 ROTATION=0
+RESOLUTION=""
 BROWSER=""
 EXTRA_FLAGS=""
 # shellcheck source=/dev/null
@@ -17,6 +18,27 @@ if [[ -z $URL ]]; then
     exit 1
 fi
 
+# The names of the screens, such as HDMI-A-1.
+screen_names() {
+    wlr-randr 2>/dev/null | awk '/^[^ ]/ { print $1 }'
+}
+
+# Sets every screen to the configured resolution: one the screen offers, or else a custom one (which virtual
+# machines accept). Needs wlr-randr and cage 0.2 or later.
+set_resolution() {
+    [[ -n $RESOLUTION ]] || return 0
+    if ! command -v wlr-randr >/dev/null 2>&1; then
+        echo "A resolution is set but wlr-randr isn't installed." >&2
+        return 0
+    fi
+    local output
+    for output in $(screen_names); do
+        wlr-randr --output "$output" --mode "$RESOLUTION" 2>/dev/null ||
+            wlr-randr --output "$output" --custom-mode "$RESOLUTION" ||
+            echo "Couldn't set $output to $RESOLUTION. This version of cage may not support it." >&2
+    done
+}
+
 # Turns every screen to the configured rotation. Needs wlr-randr and a cage that supports it (0.2 or later).
 rotate_screens() {
     [[ $ROTATION != 0 && ${KIOSK_ROTATED_BY_CAGE:-no} == no ]] || return 0
@@ -25,7 +47,7 @@ rotate_screens() {
         return 0
     fi
     local output
-    for output in $(wlr-randr 2>/dev/null | awk '/^[^ ]/ { print $1 }'); do
+    for output in $(screen_names); do
         wlr-randr --output "$output" --transform "$ROTATION" ||
             echo "Couldn't rotate $output. This version of cage may not support rotation." >&2
     done
@@ -53,6 +75,7 @@ clear_crash_flag() {
         "$preferences"
 }
 
+set_resolution
 rotate_screens
 wait_for_network
 

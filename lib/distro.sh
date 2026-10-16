@@ -39,10 +39,10 @@ pkg_install() {
     [[ $# -gt 0 ]] || return 0
     info "Installing: $*"
     case $DISTRO_FAMILY in
-        apt) DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends "$@" ;;
-        dnf) dnf install -y -q "$@" ;;
-        pacman) pacman -S --needed --noconfirm "$@" ;;
-        zypper) zypper --non-interactive --quiet install --no-recommends "$@" ;;
+        apt) quietly env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends "$@" ;;
+        dnf) quietly dnf install -y -q "$@" ;;
+        pacman) quietly pacman -S --needed --noconfirm "$@" ;;
+        zypper) quietly zypper --non-interactive --quiet install --no-recommends "$@" ;;
     esac || die "These packages couldn't be installed: $*"
 }
 
@@ -58,10 +58,10 @@ pkg_install_optional() {
     [[ ${#found[@]} -gt 0 ]] || return 0
     info "Installing: ${found[*]}"
     case $DISTRO_FAMILY in
-        apt) DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends "${found[@]}" ;;
-        dnf) dnf install -y -q --skip-broken "${found[@]}" ;;
-        pacman) pacman -S --needed --noconfirm "${found[@]}" ;;
-        zypper) zypper --non-interactive --quiet install --no-recommends "${found[@]}" ;;
+        apt) quietly env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends "${found[@]}" ;;
+        dnf) quietly dnf install -y -q --skip-broken "${found[@]}" ;;
+        pacman) quietly pacman -S --needed --noconfirm "${found[@]}" ;;
+        zypper) quietly zypper --non-interactive --quiet install --no-recommends "${found[@]}" ;;
     esac || warn "Some of these optional packages couldn't be installed: ${found[*]}"
 }
 

@@ -70,6 +70,8 @@ sudo kiosk install                  Install, or change the settings (asks questi
 kiosk url                           Show the address
 sudo kiosk url <address>            Show a different address
 sudo kiosk rotate 0|90|180|270      Turn the picture for portrait or upside-down screens
+sudo kiosk resolution 1920x1080|auto
+                                    Set the screen resolution (auto: the screen's own best)
 sudo kiosk screen off|on            Turn the screen off or on now
 sudo kiosk screen schedule 22:00 06:00
                                     Turn the screen off and on at these times each day
@@ -120,8 +122,13 @@ screen) back on, and leaves the installed packages, such as cage and Chromium, i
 - **Offline storage for Signage:** browsers only allow it on `https://` addresses. For an `http://` address, such
   as a test server on the local network, Kiosk tells Chromium to treat that one address as secure, so it works
   there too.
-- **Rotation doesn't work:** rotation needs cage 0.2 or later, or a cage older than 0.1.5 (which rotates by
-  itself). Check with `cage -v`.
+- **Black bars, or a blurry or slow picture:** the screen's resolution isn't 16:9 or is higher than needed. Run
+  `sudo kiosk resolution 1920x1080` (`auto` goes back to the screen's own best). This also suits 4K TVs on small
+  computers, and virtual machines such as Proxmox, whose virtual screen is often 1280×800 or 1024×768. For Signage,
+  the display group's *Fill the screen* setting fills the screen instead, cutting off the edges.
+- **The install stopped with an error:** the end of `/var/log/kiosk-install.log` is shown; the whole log has more.
+- **Rotation or resolution doesn't work:** these need cage 0.2 or later (rotation also works on cage older than
+  0.1.5). Check with `cage -v`, and see `sudo kiosk logs`.
 
 ## Developing
 

@@ -13,6 +13,8 @@ KIOSK_USER=kiosk
 KIOSK_HOME=/var/lib/kiosk
 UNIT_DIR=/etc/systemd/system
 FLATPAK_APP=org.chromium.Chromium
+# The package manager's own messages go here instead of the screen.
+INSTALL_LOG=/var/log/kiosk-install.log
 # Present while the screen has been turned on by hand (or by its on time), so it stays on during the off hours.
 SCREEN_ON_FLAG=/run/kiosk-screen-on
 
@@ -25,6 +27,16 @@ KIOSK_VERSION=$(cat "$SOURCE_DIR/VERSION" 2>/dev/null || echo unknown)
 
 # Prints a progress message.
 info() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
+
+# Runs a command with its output going to the install log. If it fails, shows the end of the log.
+quietly() {
+    local status=0
+    "$@" >>"$INSTALL_LOG" 2>&1 || status=$?
+    ((status == 0)) && return 0
+    printf '\n--- The last lines of %s ---\n' "$INSTALL_LOG" >&2
+    tail -n 20 "$INSTALL_LOG" >&2
+    return "$status"
+}
 
 # Prints a warning and carries on.
 warn() { printf '\033[1;33mWarning:\033[0m %s\n' "$*" >&2; }
@@ -154,6 +166,10 @@ URL=''
 # Screen rotation: 0, 90, 180 or 270 (needs cage 0.2 or later).
 ROTATION=0
 
+# Screen resolution, such as 1920x1080 (or 1920x1080@60), or blank for the screen's own best (needs cage 0.2 or
+# later).
+RESOLUTION=''
+
 # Turn the screen off and on at these times each day (24-hour HH:MM), or leave both blank to keep it on.
 SCREEN_OFF=''
 SCREEN_ON=''
@@ -175,6 +191,9 @@ is_time() { [[ $1 =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; }
 
 # Checks a time zone name, such as America/Chicago.
 is_timezone() { [[ -n $1 && $1 != *..* && -f /usr/share/zoneinfo/$1 ]]; }
+
+# Checks a screen resolution, such as 1920x1080 or 1920x1080@60.
+is_resolution() { [[ $1 =~ ^[0-9]{3,5}x[0-9]{3,5}(@[0-9]+(\.[0-9]+)?)?$ ]]; }
 
 # Checks a screen rotation.
 is_rotation() { [[ $1 =~ ^(0|90|180|270)$ ]]; }
@@ -239,12 +258,13 @@ check_system() {
 # Installs Kiosk, or with --update, updates its files and keeps the settings.
 cmd_install() {
     local -a packages
-    local url="" rotation="" timezone="" screen_off="" screen_on="" restart_time="" browser=auto
+    local url="" rotation="" resolution="" resolution_set=no timezone="" screen_off="" screen_on="" restart_time="" browser=auto
     local update=no screen_set=no restart_set=no reboot=no
     while [[ $# -gt 0 ]]; do
         case $1 in
             --url) url=${2:-}; shift 2 ;;
             --rotation) rotation=${2:-}; shift 2 ;;
+            --resolution) resolution=${2:-}; resolution_set=yes; shift 2 ;;
             --timezone) timezone=${2:-}; shift 2 ;;
             --screen-off) screen_off=${2:-}; screen_set=yes; shift 2 ;;
             --screen-on) screen_on=${2:-}; screen_set=yes; shift 2 ;;
@@ -296,6 +316,8 @@ cmd_install() {
         rotation=$ANSWER
     fi
     is_rotation "$rotation" || die "Rotation must be 0, 90, 180 or 270."
+    [[ $resolution == auto ]] && resolution=""
+    [[ -z $resolution ]] || is_resolution "$resolution" || die "The resolution must look like 1920x1080, or auto."
 
     if [[ $screen_set == no ]]; then
         ask_until is_time_or_blank "Turn the screen off each day at (24-hour, like 22:00; blank keeps it on)" \
@@ -335,8 +357,9 @@ cmd_install() {
             die "Kiosk needs the screen. Nothing was changed."
     fi
 
-    info "Installing packages"
-    pkg_refresh
+    info "Installing packages. This takes a few minutes; the details go to $INSTALL_LOG."
+    : >"$INSTALL_LOG"
+    quietly pkg_refresh || die "Couldn't refresh the package lists. Check the network and run the installer again."
     mapfile -t packages < <(required_packages)
     pkg_install "${packages[@]}"
     mapfile -t packages < <(optional_packages)
@@ -352,6 +375,7 @@ cmd_install() {
     write_default_config
     set_setting URL "$url"
     set_setting ROTATION "$rotation"
+    [[ $resolution_set == no ]] || set_setting RESOLUTION "$resolution"
     set_setting SCREEN_OFF "$screen_off"
     set_setting SCREEN_ON "$screen_on"
     set_setting RESTART_TIME "$restart_time"
@@ -397,9 +421,10 @@ install_browser() {
 
     info "Browser: Chromium from Flathub (this distribution's own Chromium can't play every video)"
     pkg_install flatpak
-    flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo ||
+    quietly flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo ||
         die "Couldn't reach Flathub (dl.flathub.org). Check the network and run the installer again."
-    flatpak install --system --noninteractive -y flathub "$FLATPAK_APP" ||
+    info "Downloading Chromium from Flathub (a few hundred MB; this can take several minutes)"
+    quietly flatpak install --system --noninteractive -y flathub "$FLATPAK_APP" ||
         die "Couldn't install Chromium from Flathub. Check the network and run the installer again."
     KIOSK_BROWSER=flatpak
 }
@@ -511,6 +536,23 @@ cmd_rotate() {
     set_setting ROTATION "$1"
     systemctl restart kiosk.service
     info "Rotation set to $1."
+}
+
+# Sets the screen resolution, or "auto" for the screen's own best.
+cmd_resolution() {
+    require_root resolution
+    require_installed
+    local resolution=${1:-}
+    [[ -n $resolution ]] || die "Use: kiosk resolution 1920x1080|auto"
+    [[ $resolution == auto ]] && resolution=""
+    [[ -z $resolution ]] || is_resolution "$resolution" || die "Use: kiosk resolution 1920x1080|auto"
+    set_setting RESOLUTION "$resolution"
+    systemctl restart kiosk.service
+    if [[ -n $resolution ]]; then
+        info "Resolution: $resolution."
+    else
+        info "Resolution: auto (the screen's own best)."
+    fi
 }
 
 # Sets the nightly restart time, or turns it off.
@@ -625,7 +667,7 @@ screen_schedule_text() {
 # Shows what the kiosk is doing.
 cmd_status() {
     require_installed
-    local state addresses restart_time
+    local state addresses restart_time resolution
     state=$(systemctl is-active kiosk.service 2>/dev/null || true)
     addresses=$(hostname -I 2>/dev/null || true)
     restart_time=$(get_setting RESTART_TIME)
@@ -635,6 +677,8 @@ cmd_status() {
     printf '  %-18s %s\n' "Browser type:" "$(get_setting BROWSER)"
     printf '  %-18s %s\n' "Screen:" "$(screen_schedule_text)"
     printf '  %-18s %s\n' "Rotation:" "$(get_setting ROTATION)"
+    resolution=$(get_setting RESOLUTION)
+    printf '  %-18s %s\n' "Resolution:" "${resolution:-auto}"
     printf '  %-18s %s\n' "Nightly restart:" "${restart_time:-off}"
     printf '  %-18s %s\n' "Time zone:" "$(timedatectl show --property=Timezone --value 2>/dev/null || echo unknown)"
     printf '  %-18s %s\n' "Host name:" "$(hostname)"
@@ -720,7 +764,7 @@ cmd_uninstall() {
         pkill -KILL -u "$KIOSK_USER" >/dev/null 2>&1 || true
         userdel "$KIOSK_USER" || warn "Couldn't remove the $KIOSK_USER user."
     fi
-    rm -rf "$KIOSK_HOME" "$CONFIG_DIR" /etc/pam.d/kiosk "$COMMAND_LINK" "$INSTALL_DIR"
+    rm -rf "$KIOSK_HOME" "$CONFIG_DIR" /etc/pam.d/kiosk "$COMMAND_LINK" "$INSTALL_DIR" "$INSTALL_LOG"
 
     info "Kiosk is removed. The packages it installed (such as cage and Chromium) are still there."
     [[ -z $display_manager ]] || echo "The desktop ($display_manager) starts again after a restart."
@@ -737,6 +781,8 @@ Works In All Things Kiosk $KIOSK_VERSION: shows one web address full screen, fro
   kiosk url                           Show the address
   sudo kiosk url <address>            Show a different address
   sudo kiosk rotate 0|90|180|270      Turn the picture for portrait or upside-down screens
+  sudo kiosk resolution 1920x1080|auto
+                                      Set the screen resolution (auto: the screen's own best)
   sudo kiosk screen off|on            Turn the screen off or on now
   sudo kiosk screen schedule HH:MM HH:MM
                                       Turn the screen off and on at these times each day
@@ -749,8 +795,11 @@ Works In All Things Kiosk $KIOSK_VERSION: shows one web address full screen, fro
   sudo kiosk uninstall                Remove Kiosk
 
 Install options (for installing without questions):
-  --url <address> --timezone <zone, such as America/Chicago or central> --rotation <0|90|180|270> --screen-off HH:MM --screen-on HH:MM
-  --restart-time HH:MM|off --browser auto|native|flatpak --yes --reboot
+  --url <address>                     --timezone <central, America/Chicago...>
+  --rotation 0|90|180|270             --resolution 1920x1080|auto
+  --screen-off HH:MM --screen-on HH:MM
+  --restart-time HH:MM|off            --browser auto|native|flatpak
+  --yes (no questions)                --reboot (restart when done)
 
 Help and support: https://worksinallthings.com/kiosk/
 EOF
@@ -763,6 +812,7 @@ main() {
         install) cmd_install "$@" ;;
         url) cmd_url "$@" ;;
         rotate) cmd_rotate "$@" ;;
+        resolution) cmd_resolution "$@" ;;
         screen) cmd_screen "$@" ;;
         restart-time) cmd_restart_time "$@" ;;
         restart) cmd_restart ;;

@@ -9,7 +9,7 @@ Write each result in the tables at the end: ✓, ✗ (with a note), or – for n
 
 | # | Do this | You should see |
 |---|---|---|
-| 1.1 | On a fresh install of the distribution, connected to the network, run `curl -fsSL https://worksinallthings.com/kiosk/install.sh \| KIOSK_REF=<branch> bash` (leave out `KIOSK_REF` once there's a release). | It asks for the address, time zone, rotation, screen times and restart time, installs, and offers to restart. |
+| 1.1 | On a fresh install of the distribution, connected to the network, run `curl -fsSL https://worksinallthings.com/kiosk/install.sh \| KIOSK_REF=<branch> bash` (leave out `KIOSK_REF` once there's a release). | It asks for the address, time zone (from a numbered list), rotation, screen times and restart time, then shows one line per step (the details go to `/var/log/kiosk-install.log`) and offers to restart. A mistyped answer is asked again. |
 | 1.2 | On a computer connected by Wi-Fi, install and restart. | It's still on the same Wi-Fi after the restart (Kiosk doesn't change network settings). |
 | 1.3 | Restart. | The address fills the screen within a minute of power-on: no login, desktop, bars, bubbles or pop-ups. No mouse pointer (unless a mouse is plugged in). |
 | 1.4 | On a computer with a desktop installed, run the installer. | It asks to turn the desktop off. After the restart the kiosk shows instead of the login screen. |
@@ -37,6 +37,7 @@ Write each result in the tables at the end: ✓, ✗ (with a note), or – for n
 |---|---|---|
 | 4.1 | `sudo kiosk url <another address>` | It switches within a few seconds. `kiosk url` shows the new address. |
 | 4.2 | `sudo kiosk rotate 90`, then `sudo kiosk rotate 0` | The picture turns for a portrait screen, then back. Note the cage version (`cage -v`) if it doesn't. |
+| 4.2a | `sudo kiosk resolution 1920x1080`, then `sudo kiosk resolution auto` | The picture changes to 1920×1080 (no black bars on a 16:9 slide), then back. On a virtual machine, note the display type (for example Proxmox *Default* or *VirtIO-GPU*). |
 | 4.3 | `sudo kiosk screen schedule <in 2 minutes> <in 4 minutes>` | The screen goes off (the TV says *no signal* or sleeps) and comes back on at the times. |
 | 4.4 | `sudo kiosk screen off`, then `sudo kiosk screen on` | Off, then on. |
 | 4.5 | Set the screen to be off now, then `sudo reboot`. | It stays off after the restart, and comes on at the on time. |
