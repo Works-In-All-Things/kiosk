@@ -9,7 +9,7 @@ Free and open source (MIT license).
 ## Install
 
 1. Install a Linux distribution on the computer (no desktop needed; see *What you need*).
-2. Log in and run:
+2. Connect it to the network (wired, or Wi-Fi when you install the distribution), log in and run:
 
    ```bash
    curl -fsSL https://worksinallthings.com/kiosk/install.sh | sudo bash
@@ -18,8 +18,7 @@ Free and open source (MIT license).
    No curl? Use `wget -qO- https://worksinallthings.com/kiosk/install.sh | sudo bash`.
 
 3. Answer the questions: the **address to show** (paste the Player URL), the time zone, screen rotation, when to
-   turn the screen off and on (optional) and when to restart each night (3:30 am unless you change it). If the
-   computer has Wi-Fi, it offers to set that up too.
+   turn the screen off and on (optional) and when to restart each night (3:30 am unless you change it).
 4. Restart. From then on the computer shows the address whenever it's turned on.
 
 To install without questions, pass the answers:
@@ -111,8 +110,13 @@ screen) back on, and leaves the installed packages, such as cage and Chromium, i
 ## Troubleshooting
 
 - **Black screen:** run `kiosk status` and `sudo kiosk logs`. Check the address opens in a normal browser.
+- **Changing Wi-Fi:** use the distribution's own tool, such as `sudo nmtui` where NetworkManager is installed
+  (Raspberry Pi OS, Fedora and most desktops) or `sudo raspi-config` on a Raspberry Pi. Kiosk leaves the network
+  settings alone.
 - **No sound:** the sound goes to the HDMI output the system picks. Check the TV's volume and input.
-- **Offline storage for Signage** needs an `https://` address.
+- **Offline storage for Signage:** browsers only allow it on `https://` addresses. For an `http://` address, such
+  as a test server on the local network, Kiosk tells Chromium to treat that one address as secure, so it works
+  there too.
 - **Rotation doesn't work:** rotation needs cage 0.2 or later, or a cage older than 0.1.5 (which rotates by
   itself). Check with `cage -v`.
 

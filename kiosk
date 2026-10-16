@@ -41,24 +41,26 @@ die() {
 # "curl ... | sudo bash", the script itself arrives on standard input, so questions are read from /dev/tty.
 can_ask() { [[ ${ASSUME_YES:-no} == no ]] && { : </dev/tty; } 2>/dev/null; }
 
-# Asks a question and prints the answer, or the default when the answer is blank or no one is there to ask.
+# Asks a question and sets ANSWER to the answer, or to the default when the answer is blank or no one is there to
+# ask. It sets a variable instead of printing, because reading the terminal inside $(...) hangs under some versions
+# of sudo (such as sudo-rs on Ubuntu 25.10 and later) when the installer arrives through a pipe.
 ask() {
-    local question=$1 default=${2:-} answer=""
+    local question=$1 default=${2:-}
+    ANSWER=""
     if can_ask; then
         if [[ -n $default ]]; then
-            read -r -p "$question [$default]: " answer </dev/tty
+            read -r -p "$question [$default]: " ANSWER </dev/tty || true
         else
-            read -r -p "$question: " answer </dev/tty
+            read -r -p "$question: " ANSWER </dev/tty || true
         fi
     fi
-    printf '%s' "${answer:-$default}"
+    ANSWER=${ANSWER:-$default}
 }
 
 # Asks a yes/no question. The default is used when no one is there to ask.
 confirm() {
-    local question=$1 default=${2:-y} answer
-    answer=$(ask "$question (y/n)" "$default")
-    [[ $answer =~ ^[Yy] ]]
+    ask "$1 (y/n)" "${2:-y}"
+    [[ $ANSWER =~ ^[Yy] ]]
 }
 
 # Settings ----------------------------------------------------------------------------------------------------
@@ -212,24 +214,35 @@ cmd_install() {
     # Questions first, so the rest runs without stopping.
     url=${url:-$(get_setting URL)}
     if ! is_url "$url"; then
-        url=$(ask "The address to show (the Player URL)" "")
+        ask "The address to show (the Player URL)" ""
+        url=$ANSWER
     fi
     is_url "$url" || die "The address must start with https:// or http://. Run the installer again with it."
-    [[ $url == https://* ]] || warn "Use an https:// address if you can: Signage can only store slides for offline play over https."
+    if [[ $url == http://* ]]; then
+        info "This is an http:// address. Kiosk tells the browser to treat it as secure, so Signage can still store slides for offline play."
+    fi
 
     local current_timezone
     current_timezone=$(timedatectl show --property=Timezone --value 2>/dev/null || true)
-    timezone=${timezone:-$(ask "Time zone (for the screen times and the nightly restart)" "${current_timezone:-UTC}")}
+    if [[ -z $timezone ]]; then
+        ask "Time zone (for the screen times and the nightly restart)" "${current_timezone:-UTC}"
+        timezone=$ANSWER
+    fi
     [[ -f /usr/share/zoneinfo/$timezone ]] || die "Unknown time zone: $timezone (for example America/Chicago)."
 
-    rotation=${rotation:-$(ask "Screen rotation: 0, 90, 180 or 270" "$(get_setting ROTATION || true)")}
-    rotation=${rotation:-0}
+    if [[ -z $rotation ]]; then
+        rotation=$(get_setting ROTATION)
+        ask "Screen rotation: 0, 90, 180 or 270" "${rotation:-0}"
+        rotation=$ANSWER
+    fi
     [[ $rotation =~ ^(0|90|180|270)$ ]] || die "Rotation must be 0, 90, 180 or 270."
 
     if [[ $screen_set == no ]]; then
-        screen_off=$(ask "Turn the screen off each day at (HH:MM, blank to keep it on)" "$(get_setting SCREEN_OFF)")
+        ask "Turn the screen off each day at (HH:MM, blank to keep it on)" "$(get_setting SCREEN_OFF)"
+        screen_off=$ANSWER
         if [[ -n $screen_off ]]; then
-            screen_on=$(ask "Turn the screen on each day at (HH:MM)" "$(get_setting SCREEN_ON)")
+            ask "Turn the screen on each day at (HH:MM)" "$(get_setting SCREEN_ON)"
+            screen_on=$ANSWER
         fi
     fi
     if [[ -n $screen_off || -n $screen_on ]]; then
@@ -242,7 +255,8 @@ cmd_install() {
         local default_restart
         default_restart=$(get_setting RESTART_TIME)
         [[ -e $CONFIG ]] || default_restart=03:30
-        restart_time=$(ask "Restart the computer each day at (HH:MM, or 'off')" "${default_restart:-off}")
+        ask "Restart the computer each day at (HH:MM, or 'off')" "${default_restart:-off}"
+        restart_time=$ANSWER
     fi
     [[ $restart_time == off ]] && restart_time=""
     [[ -z $restart_time ]] || is_time "$restart_time" || die "The restart time must be a 24-hour time like 03:30, or 'off'."
@@ -264,7 +278,6 @@ cmd_install() {
     mapfile -t packages < <(optional_packages)
     pkg_install_optional "${packages[@]}"
     install_browser "$browser"
-    setup_wifi
     enable_automatic_updates
 
     info "Setting up the kiosk"
@@ -325,19 +338,6 @@ install_browser() {
     flatpak install --system --noninteractive -y flathub "$FLATPAK_APP" ||
         die "Couldn't install Chromium from Flathub. Check the network and run the installer again."
     KIOSK_BROWSER=flatpak
-}
-
-# Offers to set up Wi-Fi when the computer has Wi-Fi. Wired networks are left as they are.
-setup_wifi() {
-    local -a packages
-    compgen -G "/sys/class/net/*/wireless" >/dev/null || return 0
-    mapfile -t packages < <(network_manager_packages)
-    pkg_install_optional "${packages[@]}"
-    command -v nmcli >/dev/null 2>&1 || return 0
-    systemctl enable --now NetworkManager.service >/dev/null 2>&1 || true
-    if command -v nmtui >/dev/null 2>&1 && can_ask && confirm "Set up Wi-Fi now?" n; then
-        nmtui connect </dev/tty >/dev/tty || true
-    fi
 }
 
 # Makes the kiosk user that the browser runs as. It has no password and can't log in.
@@ -603,9 +603,9 @@ cmd_update() {
     info "Downloading Kiosk ($ref)"
     # A release tag, or else a branch (branch names such as "feature/x" only work in the long form).
     curl -fsSL "https://github.com/$KIOSK_REPO/archive/refs/tags/$ref.tar.gz" 2>/dev/null |
-        tar -xz -C "$dir" --strip-components 1 2>/dev/null ||
+        tar -xz --warning=no-timestamp -C "$dir" --strip-components 1 2>/dev/null ||
         curl -fsSL "https://github.com/$KIOSK_REPO/archive/refs/heads/$ref.tar.gz" |
-        tar -xz -C "$dir" --strip-components 1 ||
+        tar -xz --warning=no-timestamp -C "$dir" --strip-components 1 ||
         die "Couldn't download $ref."
     bash "$dir/kiosk" install --update
 }

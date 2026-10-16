@@ -9,8 +9,8 @@ Write each result in the tables at the end: ✓, ✗ (with a note), or – for n
 
 | # | Do this | You should see |
 |---|---|---|
-| 1.1 | On a fresh install of the distribution, run `curl -fsSL https://worksinallthings.com/kiosk/install.sh \| sudo KIOSK_REF=<branch> bash` (leave out `KIOSK_REF` once there's a release). | It asks for the address, time zone, rotation, screen times and restart time, installs, and offers to restart. |
-| 1.2 | On a computer with Wi-Fi, answer **y** to *Set up Wi-Fi now?* and join a network. | The Wi-Fi screen opens; the network works after the restart. |
+| 1.1 | On a fresh install of the distribution, connected to the network, run `curl -fsSL https://worksinallthings.com/kiosk/install.sh \| sudo KIOSK_REF=<branch> bash` (leave out `KIOSK_REF` once there's a release). | It asks for the address, time zone, rotation, screen times and restart time, installs, and offers to restart. |
+| 1.2 | On a computer connected by Wi-Fi, install and restart. | It's still on the same Wi-Fi after the restart (Kiosk doesn't change network settings). |
 | 1.3 | Restart. | The address fills the screen within a minute of power-on: no login, desktop, bars, bubbles or pop-ups. No mouse pointer (unless a mouse is plugged in). |
 | 1.4 | On a computer with a desktop installed, run the installer. | It asks to turn the desktop off. After the restart the kiosk shows instead of the login screen. |
 | 1.5 | Run the installer again and press Enter at every question. | Nothing changes; the kiosk still works. |

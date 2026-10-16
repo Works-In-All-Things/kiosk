@@ -123,16 +123,6 @@ optional_packages() {
     esac
 }
 
-# The NetworkManager packages, for setting up Wi-Fi.
-network_manager_packages() {
-    case $DISTRO_FAMILY in
-        apt) printf '%s\n' network-manager ;;
-        dnf) printf '%s\n' NetworkManager NetworkManager-tui NetworkManager-wifi ;;
-        pacman) printf '%s\n' networkmanager ;;
-        zypper) printf '%s\n' NetworkManager ;;
-    esac
-}
-
 # Turns on automatic security updates where the distribution has a standard way to. Never overwrites a
 # setting that's already there.
 enable_automatic_updates() {

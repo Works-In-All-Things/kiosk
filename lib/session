@@ -74,6 +74,11 @@ flags=(
     --disable-pinch
     --ozone-platform=wayland
 )
+# Browsers only let https:// pages store files for offline play. For an http:// address (such as a test server on
+# the local network), Chromium is told to treat just that address as secure, so Signage can still store its slides.
+if [[ $URL =~ ^(http://[^/?#]+) ]]; then
+    flags+=(--unsafely-treat-insecure-origin-as-secure="${BASH_REMATCH[1]}")
+fi
 if [[ -n $EXTRA_FLAGS ]]; then
     read -r -a extra <<<"$EXTRA_FLAGS"
     flags+=("${extra[@]}")
@@ -81,7 +86,8 @@ fi
 
 if [[ $BROWSER == flatpak ]]; then
     clear_crash_flag "$HOME/.var/app/org.chromium.Chromium/config/chromium"
-    exec flatpak run org.chromium.Chromium "${flags[@]}" "$URL"
+    exec flatpak run org.chromium.Chromium "${flags[@]}" \
+        --user-data-dir="$HOME/.var/app/org.chromium.Chromium/config/chromium" "$URL"
 fi
 
 clear_crash_flag "$HOME/chromium"

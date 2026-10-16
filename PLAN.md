@@ -17,7 +17,7 @@ just as well for the Parent Page number board, or any page that should fill a sc
 | Hardware | **Not tied to any.** 64-bit Intel/AMD or ARM, 4 GB memory; the distribution's own drivers. |
 | Browser | The distribution's Chromium where it's a real package with full video support (Debian, Raspberry Pi OS, Mint, Arch). Otherwise Chromium from **Flathub** (Ubuntu's is a snap; Fedora's and openSUSE's can't play H.264 MP4s). |
 | Display | **cage**, packaged by every supported distribution. |
-| In 1.0 | Screen off/on times, rotation, nightly restart, Wi-Fi set-up, automatic updates. |
+| In 1.0 | Screen off/on times, rotation, nightly restart, automatic updates. Network settings are left alone (the computer is already online to download the installer). |
 | Later | SSH set-up during install, HDMI-CEC (turning the TV itself off), showing the IP address on screen. |
 
 ## How it fits together
@@ -39,6 +39,8 @@ just as well for the Parent Page number board, or any page that should fill a sc
 - `shellcheck` is clean.
 - A full install on Ubuntu 24.04 in a container with systemd: packages, the `kiosk` user, the login session on
   tty1 (seat0), the timers in the right time zone, settings with unusual characters, and the commands.
+- The questions on Ubuntu 26.04, whose sudo-rs leaves a piped install unable to read answers inside `$(...)`
+  or change terminal settings; the installer avoids both.
 - Not checked yet: anything on a real screen, Debian, Raspberry Pi OS, Fedora, Arch or openSUSE (their package
   mirrors and Flathub can't be reached from where it was written). That's what TESTING.md is for.
 
