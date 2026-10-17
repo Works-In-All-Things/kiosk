@@ -1,0 +1,32 @@
+# Works In All Things Kiosk: the browser, full screen on the first screen, in the cage display server.
+[Unit]
+Description=Kiosk display
+After=systemd-user-sessions.service plymouth-quit-wait.service dbus.socket systemd-logind.service getty@tty1.service
+Wants=dbus.socket systemd-logind.service network-online.target
+Conflicts=getty@tty1.service
+ConditionPathExists=/dev/tty0
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=kiosk
+PAMName=kiosk
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardInput=tty-fail
+StandardOutput=journal
+StandardError=journal
+UtmpIdentifier=tty1
+UtmpMode=user
+Environment=XDG_SESSION_TYPE=wayland
+# Stays off during the screen's off hours, so the nightly restart doesn't turn it back on.
+ExecCondition=+/usr/local/bin/kiosk screen check
+ExecStart=/usr/local/lib/kiosk/lib/start
+Restart=always
+RestartSec=3
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

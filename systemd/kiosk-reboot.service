@@ -1,0 +1,7 @@
+# Works In All Things Kiosk: the nightly restart set with "kiosk restart-time".
+[Unit]
+Description=Restart the kiosk computer
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl reboot

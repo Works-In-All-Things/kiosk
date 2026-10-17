@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# Works In All Things Kiosk: runs inside the cage display server as the kiosk user. It turns the screen if asked,
+# waits briefly for the network, then starts the browser full screen on the configured address. When the browser
+# closes, cage closes too and systemd starts them both again.
+set -uo pipefail
+
+CONFIG=/etc/kiosk/kiosk.conf
+URL=""
+ROTATION=0
+BROWSER=""
+EXTRA_FLAGS=""
+# shellcheck source=/dev/null
+[[ -r $CONFIG ]] && . "$CONFIG"
+
+if [[ -z $URL ]]; then
+    echo "No address is set. Run: sudo kiosk url <address>" >&2
+    exit 1
+fi
+
+# Turns every screen to the configured rotation. Needs wlr-randr and a cage that supports it (0.2 or later).
+rotate_screens() {
+    [[ $ROTATION != 0 && ${KIOSK_ROTATED_BY_CAGE:-no} == no ]] || return 0
+    if ! command -v wlr-randr >/dev/null 2>&1; then
+        echo "Rotation is set but wlr-randr isn't installed." >&2
+        return 0
+    fi
+    local output
+    for output in $(wlr-randr 2>/dev/null | awk '/^[^ ]/ { print $1 }'); do
+        wlr-randr --output "$output" --transform "$ROTATION" ||
+            echo "Couldn't rotate $output. This version of cage may not support rotation." >&2
+    done
+}
+
+# Waits up to 90 seconds for the address to answer, so a TV that powers up with the network gives it time to
+# connect. It starts the browser anyway after that: a Signage player that was stored for offline plays without
+# the network.
+wait_for_network() {
+    local attempt
+    for attempt in $(seq 1 18); do
+        if curl --silent --output /dev/null --max-time 5 "$URL"; then
+            return 0
+        fi
+        [[ $attempt -lt 18 ]] && sleep 5
+    done
+    echo "$URL didn't answer within 90 seconds; starting the browser anyway." >&2
+}
+
+# Marks the last browser session as closed normally, so a crash or power cut never shows "Restore pages?".
+clear_crash_flag() {
+    local preferences=$1/Default/Preferences
+    [[ -f $preferences ]] || return 0
+    sed -i 's/"exit_type":"Crashed"/"exit_type":"Normal"/; s/"exited_cleanly":false/"exited_cleanly":true/' \
+        "$preferences"
+}
+
+rotate_screens
+wait_for_network
+
+# shellcheck disable=SC2054 # The commas separate Chromium feature names, not array items.
+flags=(
+    --kiosk
+    --no-first-run
+    --no-default-browser-check
+    --noerrdialogs
+    --disable-infobars
+    --hide-crash-restore-bubble
+    --disable-session-crashed-bubble
+    --disable-features=Translate,TranslateUI,MediaRouter
+    --enable-features=AcceleratedVideoDecodeLinuxGL,AcceleratedVideoDecodeLinuxZeroCopyGL
+    --autoplay-policy=no-user-gesture-required
+    --check-for-update-interval=31536000
+    --password-store=basic
+    --overscroll-history-navigation=0
+    --disable-pinch
+    --ozone-platform=wayland
+)
+if [[ -n $EXTRA_FLAGS ]]; then
+    read -r -a extra <<<"$EXTRA_FLAGS"
+    flags+=("${extra[@]}")
+fi
+
+if [[ $BROWSER == flatpak ]]; then
+    clear_crash_flag "$HOME/.var/app/org.chromium.Chromium/config/chromium"
+    exec flatpak run org.chromium.Chromium "${flags[@]}" "$URL"
+fi
+
+clear_crash_flag "$HOME/chromium"
+exec "$BROWSER" "${flags[@]}" --user-data-dir="$HOME/chromium" "$URL"

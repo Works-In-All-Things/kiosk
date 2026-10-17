@@ -1,0 +1,712 @@
+#!/usr/bin/env bash
+# Works In All Things Kiosk: turns a Linux computer into a full-screen player for one web address, such as a
+# Signage Player URL. Run "kiosk help" for the commands.
+set -euo pipefail
+
+KIOSK_REPO=randyjreed/kiosk
+INSTALL_DIR=/usr/local/lib/kiosk
+COMMAND_LINK=/usr/local/bin/kiosk
+CONFIG_DIR=/etc/kiosk
+CONFIG=$CONFIG_DIR/kiosk.conf
+STATE=$CONFIG_DIR/install-state
+KIOSK_USER=kiosk
+KIOSK_HOME=/var/lib/kiosk
+UNIT_DIR=/etc/systemd/system
+FLATPAK_APP=org.chromium.Chromium
+# Present while the screen has been turned on by hand (or by its on time), so it stays on during the off hours.
+SCREEN_ON_FLAG=/run/kiosk-screen-on
+
+SOURCE_DIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
+KIOSK_VERSION=$(cat "$SOURCE_DIR/VERSION" 2>/dev/null || echo unknown)
+# shellcheck source=lib/distro.sh
+. "$SOURCE_DIR/lib/distro.sh"
+
+# Messages ----------------------------------------------------------------------------------------------------
+
+# Prints a progress message.
+info() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
+
+# Prints a warning and carries on.
+warn() { printf '\033[1;33mWarning:\033[0m %s\n' "$*" >&2; }
+
+# Prints an error and stops.
+die() {
+    printf '\033[1;31mError:\033[0m %s\n' "$*" >&2
+    exit 1
+}
+
+# Questions ---------------------------------------------------------------------------------------------------
+
+# True when questions can be asked: there's a terminal and --yes wasn't given. When installed with
+# "curl ... | sudo bash", the script itself arrives on standard input, so questions are read from /dev/tty.
+can_ask() { [[ ${ASSUME_YES:-no} == no ]] && { : </dev/tty; } 2>/dev/null; }
+
+# Asks a question and prints the answer, or the default when the answer is blank or no one is there to ask.
+ask() {
+    local question=$1 default=${2:-} answer=""
+    if can_ask; then
+        if [[ -n $default ]]; then
+            read -r -p "$question [$default]: " answer </dev/tty
+        else
+            read -r -p "$question: " answer </dev/tty
+        fi
+    fi
+    printf '%s' "${answer:-$default}"
+}
+
+# Asks a yes/no question. The default is used when no one is there to ask.
+confirm() {
+    local question=$1 default=${2:-y} answer
+    answer=$(ask "$question (y/n)" "$default")
+    [[ $answer =~ ^[Yy] ]]
+}
+
+# Settings ----------------------------------------------------------------------------------------------------
+
+# Prints a setting from kiosk.conf.
+get_setting() {
+    [[ -r $CONFIG ]] || return 0
+    (
+        # shellcheck source=/dev/null
+        . "$CONFIG"
+        printf '%s' "${!1:-}"
+    )
+}
+
+# Saves a setting in kiosk.conf, quoted so any address is stored safely.
+set_setting() {
+    local key=$1 value=$2 line
+    line="$key=$(printf '%q' "$value")"
+    mkdir -p "$CONFIG_DIR"
+    touch "$CONFIG"
+    if grep -q "^$key=" "$CONFIG"; then
+        KIOSK_LINE=$line awk -v key="$key" 'index($0, key "=") == 1 { print ENVIRON["KIOSK_LINE"]; next } { print }' \
+            "$CONFIG" >"$CONFIG.new"
+        mv "$CONFIG.new" "$CONFIG"
+    else
+        printf '%s\n' "$line" >>"$CONFIG"
+    fi
+    chmod 644 "$CONFIG"
+}
+
+# Writes kiosk.conf with its comments, the first time Kiosk is installed.
+write_default_config() {
+    [[ -e $CONFIG ]] && return 0
+    mkdir -p "$CONFIG_DIR"
+    cat >"$CONFIG" <<'EOF'
+# Works In All Things Kiosk settings. Change them with the kiosk command (run "kiosk help"), or edit this file
+# and run "sudo kiosk restart".
+
+# The address to show full screen, such as a Signage Player URL.
+URL=''
+
+# Screen rotation: 0, 90, 180 or 270 (needs cage 0.2 or later).
+ROTATION=0
+
+# Turn the screen off and on at these times each day (24-hour HH:MM), or leave both blank to keep it on.
+SCREEN_OFF=''
+SCREEN_ON=''
+
+# Restart the computer at this time each day (24-hour HH:MM), or leave blank for never.
+RESTART_TIME=03:30
+
+# The browser: flatpak, or the path of the distribution's Chromium. Set by the installer.
+BROWSER=''
+
+# Extra Chromium command-line options, separated by spaces.
+EXTRA_FLAGS=''
+EOF
+    chmod 644 "$CONFIG"
+}
+
+# Checks a 24-hour time like 22:00.
+is_time() { [[ $1 =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; }
+
+# Checks a web address.
+is_url() { [[ $1 =~ ^https?://[^[:space:]]+$ ]]; }
+
+# Minutes since midnight for a 24-hour time.
+minutes_of() { echo $((10#${1%%:*} * 60 + 10#${1##*:})); }
+
+# Install state ----------------------------------------------------------------------------------------------
+
+# Remembers something about the computer before Kiosk changed it, so uninstall can put it back.
+remember() {
+    mkdir -p "$CONFIG_DIR"
+    grep -q "^$1=" "$STATE" 2>/dev/null && return 0
+    printf '%s=%q\n' "$1" "$2" >>"$STATE"
+}
+
+# Prints something remembered by remember().
+recall() {
+    [[ -r $STATE ]] || return 0
+    (
+        # shellcheck source=/dev/null
+        . "$STATE"
+        printf '%s' "${!1:-}"
+    )
+}
+
+# Checks ------------------------------------------------------------------------------------------------------
+
+# Stops unless running as root.
+require_root() {
+    [[ $EUID -eq 0 ]] || die "Run this with sudo: sudo kiosk $*"
+}
+
+# Stops unless Kiosk is installed.
+require_installed() {
+    [[ -e $UNIT_DIR/kiosk.service ]] || die "Kiosk isn't installed. Install it with: sudo kiosk install"
+}
+
+# Stops on computers Kiosk can't run on.
+check_system() {
+    [[ -d /run/systemd/system ]] || die "Kiosk needs systemd, and this computer doesn't use it."
+    [[ ! -e /run/ostree-booted ]] ||
+        die "This is an image-based system (such as Fedora Silverblue). Kiosk needs a normal installation."
+    case $(uname -m) in
+        x86_64 | aarch64) ;;
+        *) die "Kiosk needs a 64-bit Intel/AMD or ARM computer (this one is $(uname -m))." ;;
+    esac
+    detect_distro
+}
+
+# Install -----------------------------------------------------------------------------------------------------
+
+# Installs Kiosk, or with --update, updates its files and keeps the settings.
+cmd_install() {
+    local -a packages
+    local url="" rotation="" timezone="" screen_off="" screen_on="" restart_time="" browser=auto
+    local update=no screen_set=no restart_set=no reboot=no
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --url) url=${2:-}; shift 2 ;;
+            --rotation) rotation=${2:-}; shift 2 ;;
+            --timezone) timezone=${2:-}; shift 2 ;;
+            --screen-off) screen_off=${2:-}; screen_set=yes; shift 2 ;;
+            --screen-on) screen_on=${2:-}; screen_set=yes; shift 2 ;;
+            --restart-time) restart_time=${2:-}; restart_set=yes; shift 2 ;;
+            --browser) browser=${2:-}; shift 2 ;;
+            --yes | -y) ASSUME_YES=yes; shift ;;
+            --update) update=yes; ASSUME_YES=yes; shift ;;
+            --reboot) reboot=yes; shift ;;
+            *) die "Unknown option: $1 (see: kiosk help)" ;;
+        esac
+    done
+    require_root install
+    check_system
+
+    if [[ $update == yes ]]; then
+        require_installed
+        info "Updating Kiosk to $KIOSK_VERSION on $DISTRO_NAME"
+        install_files
+        enable_units
+        systemctl restart kiosk.service || true
+        info "Kiosk is updated to $KIOSK_VERSION."
+        return
+    fi
+
+    printf '\n\033[1mWorks In All Things Kiosk %s\033[0m on %s\n\n' "$KIOSK_VERSION" "$DISTRO_NAME"
+    [[ -n $(get_setting URL) ]] && info "Kiosk is already installed. Your settings are kept unless you change them."
+
+    # Questions first, so the rest runs without stopping.
+    url=${url:-$(get_setting URL)}
+    if ! is_url "$url"; then
+        url=$(ask "The address to show (the Player URL)" "")
+    fi
+    is_url "$url" || die "The address must start with https:// or http://. Run the installer again with it."
+    [[ $url == https://* ]] || warn "Use an https:// address if you can: Signage can only store slides for offline play over https."
+
+    local current_timezone
+    current_timezone=$(timedatectl show --property=Timezone --value 2>/dev/null || true)
+    timezone=${timezone:-$(ask "Time zone (for the screen times and the nightly restart)" "${current_timezone:-UTC}")}
+    [[ -f /usr/share/zoneinfo/$timezone ]] || die "Unknown time zone: $timezone (for example America/Chicago)."
+
+    rotation=${rotation:-$(ask "Screen rotation: 0, 90, 180 or 270" "$(get_setting ROTATION || true)")}
+    rotation=${rotation:-0}
+    [[ $rotation =~ ^(0|90|180|270)$ ]] || die "Rotation must be 0, 90, 180 or 270."
+
+    if [[ $screen_set == no ]]; then
+        screen_off=$(ask "Turn the screen off each day at (HH:MM, blank to keep it on)" "$(get_setting SCREEN_OFF)")
+        if [[ -n $screen_off ]]; then
+            screen_on=$(ask "Turn the screen on each day at (HH:MM)" "$(get_setting SCREEN_ON)")
+        fi
+    fi
+    if [[ -n $screen_off || -n $screen_on ]]; then
+        if ! is_time "$screen_off" || ! is_time "$screen_on"; then
+            die "Screen off and on times must both be 24-hour times like 22:00 and 06:00."
+        fi
+    fi
+
+    if [[ $restart_set == no ]]; then
+        local default_restart
+        default_restart=$(get_setting RESTART_TIME)
+        [[ -e $CONFIG ]] || default_restart=03:30
+        restart_time=$(ask "Restart the computer each day at (HH:MM, or 'off')" "${default_restart:-off}")
+    fi
+    [[ $restart_time == off ]] && restart_time=""
+    [[ -z $restart_time ]] || is_time "$restart_time" || die "The restart time must be a 24-hour time like 03:30, or 'off'."
+
+    local display_manager=""
+    if [[ -L $UNIT_DIR/display-manager.service ]]; then
+        display_manager=$(readlink -f "$UNIT_DIR/display-manager.service")
+        display_manager=${display_manager##*/}
+    fi
+    if [[ -n $display_manager && $display_manager != kiosk.service ]]; then
+        confirm "This computer starts a desktop ($display_manager). Turn it off so the kiosk can use the screen?" y ||
+            die "Kiosk needs the screen. Nothing was changed."
+    fi
+
+    info "Installing packages"
+    pkg_refresh
+    mapfile -t packages < <(required_packages)
+    pkg_install "${packages[@]}"
+    mapfile -t packages < <(optional_packages)
+    pkg_install_optional "${packages[@]}"
+    install_browser "$browser"
+    setup_wifi
+    enable_automatic_updates
+
+    info "Setting up the kiosk"
+    timedatectl set-timezone "$timezone"
+    timedatectl set-ntp true 2>/dev/null || true
+    create_user
+    install_files
+    write_default_config
+    set_setting URL "$url"
+    set_setting ROTATION "$rotation"
+    set_setting SCREEN_OFF "$screen_off"
+    set_setting SCREEN_ON "$screen_on"
+    set_setting RESTART_TIME "$restart_time"
+    set_setting BROWSER "$KIOSK_BROWSER"
+
+    if [[ -n $display_manager && $display_manager != kiosk.service ]]; then
+        remember DISPLAY_MANAGER "$display_manager"
+        systemctl disable "$display_manager" >/dev/null 2>&1 || true
+    fi
+    remember GETTY_TTY1 "$(systemctl is-enabled getty@tty1.service 2>/dev/null || echo enabled)"
+    enable_units
+
+    printf '\n\033[1mKiosk is installed.\033[0m It shows %s full screen whenever this computer starts.\n' "$url"
+    echo "Change it later with: sudo kiosk url <address>   (more: kiosk help)"
+    if [[ $reboot == yes ]] || { can_ask && confirm "Restart now to start it?" y; }; then
+        systemctl reboot
+    else
+        echo "Restart the computer to start it."
+    fi
+}
+
+# Installs the browser: the distribution's Chromium where it has full video support, otherwise Chromium from
+# Flathub. Sets KIOSK_BROWSER to "flatpak" or the browser's path.
+install_browser() {
+    local choice=$1 package
+    case $choice in
+        auto | native | flatpak) ;;
+        *) die "The browser must be auto, native or flatpak." ;;
+    esac
+    package=""
+    [[ $choice == flatpak ]] || package=$(native_chromium_package)
+    if [[ $choice == native && -z $package ]]; then
+        die "$DISTRO_NAME has no Chromium package with full video support. Use --browser flatpak."
+    fi
+
+    if [[ -n $package ]]; then
+        pkg_install "$package"
+        KIOSK_BROWSER=$(command -v chromium || command -v chromium-browser || true)
+        [[ -n $KIOSK_BROWSER ]] || die "Chromium was installed but couldn't be found."
+        info "Browser: $package from $DISTRO_NAME"
+        return
+    fi
+
+    info "Browser: Chromium from Flathub (this distribution's own Chromium can't play every video)"
+    pkg_install flatpak
+    flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo ||
+        die "Couldn't reach Flathub (dl.flathub.org). Check the network and run the installer again."
+    flatpak install --system --noninteractive -y flathub "$FLATPAK_APP" ||
+        die "Couldn't install Chromium from Flathub. Check the network and run the installer again."
+    KIOSK_BROWSER=flatpak
+}
+
+# Offers to set up Wi-Fi when the computer has Wi-Fi. Wired networks are left as they are.
+setup_wifi() {
+    local -a packages
+    compgen -G "/sys/class/net/*/wireless" >/dev/null || return 0
+    mapfile -t packages < <(network_manager_packages)
+    pkg_install_optional "${packages[@]}"
+    command -v nmcli >/dev/null 2>&1 || return 0
+    systemctl enable --now NetworkManager.service >/dev/null 2>&1 || true
+    if command -v nmtui >/dev/null 2>&1 && can_ask && confirm "Set up Wi-Fi now?" n; then
+        nmtui connect </dev/tty >/dev/tty || true
+    fi
+}
+
+# Makes the kiosk user that the browser runs as. It has no password and can't log in.
+create_user() {
+    if ! id "$KIOSK_USER" >/dev/null 2>&1; then
+        local nologin
+        nologin=$(command -v nologin || echo /usr/sbin/nologin)
+        useradd --system --create-home --home-dir "$KIOSK_HOME" --shell "$nologin" \
+            --comment "Kiosk display" "$KIOSK_USER"
+    fi
+    local group
+    for group in video render audio input; do
+        getent group "$group" >/dev/null && usermod -a -G "$group" "$KIOSK_USER"
+    done
+    chmod 700 "$KIOSK_HOME"
+}
+
+# Copies Kiosk's own files into place: the command, the session script, the systemd units and the login
+# session settings.
+install_files() {
+    if [[ $SOURCE_DIR != "$INSTALL_DIR" ]]; then
+        rm -rf "$INSTALL_DIR.new"
+        mkdir -p "$INSTALL_DIR.new"
+        cp -R "$SOURCE_DIR/kiosk" "$SOURCE_DIR/VERSION" "$SOURCE_DIR/lib" "$SOURCE_DIR/systemd" "$INSTALL_DIR.new/"
+        rm -rf "$INSTALL_DIR"
+        mv "$INSTALL_DIR.new" "$INSTALL_DIR"
+    fi
+    chmod 755 "$INSTALL_DIR/kiosk" "$INSTALL_DIR/lib/session" "$INSTALL_DIR/lib/start"
+    # On SELinux systems such as Fedora, systemd may only run files labelled as programs.
+    if command -v selinuxenabled >/dev/null 2>&1 && selinuxenabled; then
+        chcon -t bin_t "$INSTALL_DIR/kiosk" "$INSTALL_DIR/lib/session" "$INSTALL_DIR/lib/start" ||
+            warn "Couldn't label Kiosk's programs for SELinux."
+    fi
+    ln -sf "$INSTALL_DIR/kiosk" "$COMMAND_LINK"
+    install -m 644 "$INSTALL_DIR/lib/pam-kiosk" /etc/pam.d/kiosk
+    local unit
+    for unit in "$INSTALL_DIR"/systemd/*; do
+        install -m 644 "$unit" "$UNIT_DIR/"
+    done
+}
+
+# Turns on the kiosk and its timers, and turns off the console login on the first screen.
+enable_units() {
+    write_timers
+    systemctl daemon-reload
+    systemctl disable getty@tty1.service >/dev/null 2>&1 || true
+    systemctl enable kiosk.service kiosk-update.timer >/dev/null
+}
+
+# Writes the screen and restart timers from the settings, and turns each on or off.
+write_timers() {
+    local screen_off screen_on restart_time
+    screen_off=$(get_setting SCREEN_OFF)
+    screen_on=$(get_setting SCREEN_ON)
+    restart_time=$(get_setting RESTART_TIME)
+    write_timer kiosk-screen-off "Turn the kiosk screen off" "$screen_off"
+    write_timer kiosk-screen-on "Turn the kiosk screen on" "$screen_on"
+    write_timer kiosk-reboot "Restart the kiosk computer" "$restart_time"
+}
+
+# Writes one daily timer and turns it on, or removes it when the time is blank.
+write_timer() {
+    local name=$1 description=$2 time=$3
+    if [[ -z $time ]]; then
+        systemctl disable --now "$name.timer" >/dev/null 2>&1 || true
+        rm -f "$UNIT_DIR/$name.timer"
+        return
+    fi
+    cat >"$UNIT_DIR/$name.timer" <<EOF
+# Works In All Things Kiosk: written by "kiosk"; change the time with the kiosk command, not here.
+[Unit]
+Description=$description at $time
+
+[Timer]
+OnCalendar=*-*-* $time:00
+
+[Install]
+WantedBy=timers.target
+EOF
+    systemctl daemon-reload
+    systemctl enable "$name.timer" >/dev/null 2>&1
+    systemctl restart "$name.timer" >/dev/null 2>&1 || true
+}
+
+# Settings commands -------------------------------------------------------------------------------------------
+
+# Shows the address, or sets a new one and restarts the browser.
+cmd_url() {
+    if [[ $# -eq 0 ]]; then
+        get_setting URL
+        echo
+        return
+    fi
+    require_root url
+    require_installed
+    is_url "$1" || die "The address must start with https:// or http://."
+    set_setting URL "$1"
+    systemctl restart kiosk.service
+    info "Now showing $1"
+}
+
+# Sets the screen rotation.
+cmd_rotate() {
+    require_root rotate
+    require_installed
+    [[ ${1:-} =~ ^(0|90|180|270)$ ]] || die "Use: kiosk rotate 0|90|180|270"
+    set_setting ROTATION "$1"
+    systemctl restart kiosk.service
+    info "Rotation set to $1."
+}
+
+# Sets the nightly restart time, or turns it off.
+cmd_restart_time() {
+    require_root restart-time
+    require_installed
+    local time=${1:-}
+    [[ $time == off ]] && time=""
+    [[ -z $time ]] || is_time "$time" || die "Use: kiosk restart-time HH:MM|off"
+    [[ -n ${1:-} ]] || die "Use: kiosk restart-time HH:MM|off"
+    set_setting RESTART_TIME "$time"
+    write_timers
+    info "Nightly restart: ${time:-off}."
+}
+
+# Restarts the browser.
+cmd_restart() {
+    require_root restart
+    require_installed
+    systemctl restart kiosk.service
+    info "The browser is restarting."
+}
+
+# Screen ------------------------------------------------------------------------------------------------------
+
+# Turns the screen off or on now, sets its daily schedule, or (for the kiosk service) checks whether it should
+# be on right now.
+cmd_screen() {
+    case ${1:-} in
+        off)
+            require_root screen
+            rm -f "$SCREEN_ON_FLAG"
+            systemctl stop kiosk.service
+            blank_screen 4
+            info "The screen is off. Turn it on with: sudo kiosk screen on"
+            ;;
+        on)
+            require_root screen
+            touch "$SCREEN_ON_FLAG"
+            blank_screen 0
+            systemctl start kiosk.service
+            info "The screen is on."
+            ;;
+        schedule)
+            require_root screen
+            require_installed
+            if [[ ${2:-} == off ]]; then
+                set_setting SCREEN_OFF ""
+                set_setting SCREEN_ON ""
+            else
+                if ! is_time "${2:-}" || ! is_time "${3:-}"; then
+                    die "Use: kiosk screen schedule HH:MM HH:MM (off, then on), or: kiosk screen schedule off"
+                fi
+                set_setting SCREEN_OFF "$2"
+                set_setting SCREEN_ON "$3"
+            fi
+            write_timers
+            info "Screen schedule: $(screen_schedule_text)."
+            ;;
+        check)
+            # Used by kiosk.service: fails (so the browser doesn't start) during the off hours.
+            if screen_should_be_off; then
+                blank_screen 4
+                exit 1
+            fi
+            ;;
+        *) die "Use: kiosk screen off|on|schedule" ;;
+    esac
+}
+
+# Blanks (4) or unblanks (0) the console, which also tells most screens to go to sleep or wake up.
+blank_screen() {
+    local blank
+    for blank in /sys/class/graphics/fb*/blank; do
+        [[ -w $blank ]] && echo "$1" >"$blank" 2>/dev/null || true
+    done
+}
+
+# True during the screen's off hours, unless it was turned on since the last off time.
+screen_should_be_off() {
+    local screen_off screen_on now off on
+    [[ ! -e $SCREEN_ON_FLAG ]] || return 1
+    screen_off=$(get_setting SCREEN_OFF)
+    screen_on=$(get_setting SCREEN_ON)
+    if ! is_time "$screen_off" || ! is_time "$screen_on"; then
+        return 1
+    fi
+    now=$(minutes_of "$(date +%H:%M)")
+    off=$(minutes_of "$screen_off")
+    on=$(minutes_of "$screen_on")
+    if ((off < on)); then
+        ((now >= off && now < on))
+    else
+        ((now >= off || now < on))
+    fi
+}
+
+# Describes the screen schedule.
+screen_schedule_text() {
+    local screen_off screen_on
+    screen_off=$(get_setting SCREEN_OFF)
+    screen_on=$(get_setting SCREEN_ON)
+    if [[ -n $screen_off ]]; then
+        echo "off at $screen_off, on at $screen_on"
+    else
+        echo "always on"
+    fi
+}
+
+# Status ------------------------------------------------------------------------------------------------------
+
+# Shows what the kiosk is doing.
+cmd_status() {
+    require_installed
+    local state addresses restart_time
+    state=$(systemctl is-active kiosk.service 2>/dev/null || true)
+    addresses=$(hostname -I 2>/dev/null || true)
+    restart_time=$(get_setting RESTART_TIME)
+    printf 'Kiosk %s on %s\n\n' "$KIOSK_VERSION" "$(. /etc/os-release && echo "$PRETTY_NAME")"
+    printf '  %-18s %s\n' "Showing:" "$(get_setting URL)"
+    printf '  %-18s %s\n' "Browser:" "$(systemctl is-active --quiet kiosk.service && echo running || echo "not running ($state)")"
+    printf '  %-18s %s\n' "Browser type:" "$(get_setting BROWSER)"
+    printf '  %-18s %s\n' "Screen:" "$(screen_schedule_text)"
+    printf '  %-18s %s\n' "Rotation:" "$(get_setting ROTATION)"
+    printf '  %-18s %s\n' "Nightly restart:" "${restart_time:-off}"
+    printf '  %-18s %s\n' "Time zone:" "$(timedatectl show --property=Timezone --value 2>/dev/null || echo unknown)"
+    printf '  %-18s %s\n' "Host name:" "$(hostname)"
+    printf '  %-18s %s\n' "IP addresses:" "${addresses:-none}"
+    echo
+    echo "Recent messages: sudo kiosk logs"
+}
+
+# Shows the kiosk's recent log messages.
+cmd_logs() {
+    journalctl -u kiosk.service -n "${1:-100}" --no-pager
+}
+
+# Updates -----------------------------------------------------------------------------------------------------
+
+# Downloads a Kiosk release (the latest, or the branch or tag given) and installs its files, keeping the
+# settings.
+cmd_update() {
+    require_root update
+    require_installed
+    local ref=${1:-} dir
+    if [[ -z $ref ]]; then
+        ref=$(curl -fsSL "https://api.github.com/repos/$KIOSK_REPO/releases/latest" 2>/dev/null |
+            sed -n 's/^ *"tag_name": *"\([^"]*\)".*/\1/p' || true)
+        [[ -n $ref ]] || die "Couldn't find the latest release. Give a branch or tag: sudo kiosk update <name>"
+    fi
+    dir=$(mktemp -d)
+    # shellcheck disable=SC2064 # The folder is known now and must be removed whatever happens later.
+    trap "rm -rf '$dir'" EXIT
+    info "Downloading Kiosk ($ref)"
+    curl -fsSL "https://github.com/$KIOSK_REPO/archive/$ref.tar.gz" | tar -xz -C "$dir" --strip-components 1 ||
+        die "Couldn't download $ref."
+    bash "$dir/kiosk" install --update
+}
+
+# Updates the Flathub browser, when the kiosk uses it. The browser picks it up at its next restart.
+cmd_update_browser() {
+    require_root update-browser
+    [[ $(get_setting BROWSER) == flatpak ]] || return 0
+    flatpak update --system --noninteractive -y "$FLATPAK_APP"
+}
+
+# Uninstall ---------------------------------------------------------------------------------------------------
+
+# Removes everything Kiosk added and puts the computer back as it was. Packages are left installed, because
+# other things may use them.
+cmd_uninstall() {
+    [[ ${1:-} == --yes || ${1:-} == -y ]] && ASSUME_YES=yes
+    require_root uninstall
+    confirm "Remove Kiosk and its settings from this computer?" y || die "Nothing was changed."
+
+    info "Removing Kiosk"
+    local name display_manager getty
+    for name in kiosk.service kiosk-update.timer kiosk-screen-off.timer kiosk-screen-on.timer kiosk-reboot.timer; do
+        systemctl disable --now "$name" >/dev/null 2>&1 || true
+    done
+    for name in kiosk.service kiosk-screen-off.service kiosk-screen-on.service kiosk-reboot.service \
+        kiosk-update.service kiosk-update.timer kiosk-screen-off.timer kiosk-screen-on.timer kiosk-reboot.timer; do
+        rm -f "$UNIT_DIR/$name"
+    done
+    systemctl daemon-reload
+    blank_screen 0
+
+    display_manager=$(recall DISPLAY_MANAGER)
+    getty=$(recall GETTY_TTY1)
+    [[ $getty == disabled ]] || systemctl enable --now getty@tty1.service >/dev/null 2>&1 || true
+    if [[ -n $display_manager ]]; then
+        systemctl enable "$display_manager" >/dev/null 2>&1 || warn "Couldn't turn $display_manager back on."
+    fi
+
+    if id "$KIOSK_USER" >/dev/null 2>&1; then
+        # Ends the kiosk user's session (its sound and session bus) so the user can be removed.
+        loginctl terminate-user "$KIOSK_USER" >/dev/null 2>&1 || true
+        local seconds=0
+        while pgrep -u "$KIOSK_USER" >/dev/null && ((seconds < 10)); do
+            sleep 1
+            seconds=$((seconds + 1))
+        done
+        pkill -KILL -u "$KIOSK_USER" >/dev/null 2>&1 || true
+        userdel "$KIOSK_USER" || warn "Couldn't remove the $KIOSK_USER user."
+    fi
+    rm -rf "$KIOSK_HOME" "$CONFIG_DIR" /etc/pam.d/kiosk "$COMMAND_LINK" "$INSTALL_DIR"
+
+    info "Kiosk is removed. The packages it installed (such as cage and Chromium) are still there."
+    [[ -z $display_manager ]] || echo "The desktop ($display_manager) starts again after a restart."
+}
+
+# Help --------------------------------------------------------------------------------------------------------
+
+# Shows the commands.
+cmd_help() {
+    cat <<EOF
+Works In All Things Kiosk $KIOSK_VERSION: shows one web address full screen, from power-on.
+
+  sudo kiosk install                  Install, or change the settings (asks questions)
+  kiosk url                           Show the address
+  sudo kiosk url <address>            Show a different address
+  sudo kiosk rotate 0|90|180|270      Turn the picture for portrait or upside-down screens
+  sudo kiosk screen off|on            Turn the screen off or on now
+  sudo kiosk screen schedule HH:MM HH:MM
+                                      Turn the screen off and on at these times each day
+  sudo kiosk screen schedule off      Keep the screen on
+  sudo kiosk restart-time HH:MM|off   Restart the computer at this time each day
+  sudo kiosk restart                  Restart the browser
+  kiosk status                        Show what the kiosk is doing
+  sudo kiosk logs                     Show recent messages
+  sudo kiosk update                   Update Kiosk to the latest release
+  sudo kiosk uninstall                Remove Kiosk
+
+Install options (for installing without questions):
+  --url <address> --timezone <zone> --rotation <0|90|180|270> --screen-off HH:MM --screen-on HH:MM
+  --restart-time HH:MM|off --browser auto|native|flatpak --yes --reboot
+
+Help and support: https://worksinallthings.com/kiosk/
+EOF
+}
+
+main() {
+    local command=${1:-help}
+    [[ $# -gt 0 ]] && shift
+    case $command in
+        install) cmd_install "$@" ;;
+        url) cmd_url "$@" ;;
+        rotate) cmd_rotate "$@" ;;
+        screen) cmd_screen "$@" ;;
+        restart-time) cmd_restart_time "$@" ;;
+        restart) cmd_restart ;;
+        status) cmd_status ;;
+        logs) cmd_logs "$@" ;;
+        update) cmd_update "$@" ;;
+        update-browser) cmd_update_browser ;;
+        uninstall) cmd_uninstall "$@" ;;
+        version | --version) echo "$KIOSK_VERSION" ;;
+        help | --help | -h) cmd_help ;;
+        *) die "Unknown command: $command (see: kiosk help)" ;;
+    esac
+}
+
+main "$@"

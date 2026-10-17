@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Works In All Things Kiosk: starts the cage display server with the session script. Older cage versions (before
+# 0.1.5) turn the screen with their own -r option; newer ones are turned by the session script with wlr-randr.
+set -uo pipefail
+
+ROTATION=0
+# shellcheck source=/dev/null
+[[ -r /etc/kiosk/kiosk.conf ]] && . /etc/kiosk/kiosk.conf
+
+cage_options=(-s)
+if [[ $ROTATION != 0 ]] && cage -h 2>&1 | grep -qE '^[[:space:]]*-r[[:space:]]'; then
+    for ((turn = 0; turn < ROTATION / 90; turn++)); do
+        cage_options+=(-r)
+    done
+    export KIOSK_ROTATED_BY_CAGE=yes
+fi
+
+exec cage "${cage_options[@]}" -- /usr/local/lib/kiosk/lib/session

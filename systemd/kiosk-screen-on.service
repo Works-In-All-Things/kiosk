@@ -1,0 +1,7 @@
+# Works In All Things Kiosk: turns the screen on at the time set with "kiosk screen schedule".
+[Unit]
+Description=Turn the kiosk screen on
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/kiosk screen on

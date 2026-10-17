@@ -1,8 +1,9 @@
 # Kiosk: notes for Claude Code
 
-**Works In All Things Kiosk** turns a fresh Debian 12/13 computer (or a Raspberry Pi 5 with Raspberry Pi OS Lite)
-into a full-screen web player for one address, such as a Signage Player URL. Status: planning; see
-[PLAN.md](PLAN.md).
+**Works In All Things Kiosk** turns a Linux computer (any distribution with systemd and apt, dnf, pacman or zypper)
+into a full-screen web player for one address, such as a Signage Player URL. It's free and open source (MIT).
+Status: first version written, waiting for hardware tests. See [PLAN.md](PLAN.md), [README.md](README.md) and
+[TESTING.md](TESTING.md).
 
 ## Working rules
 
@@ -15,6 +16,10 @@ into a full-screen web player for one address, such as a Signage Player URL. Sta
 
 ## Code rules
 
-- Bash, `set -euo pipefail`, `shellcheck` clean with no disabled checks unless a comment says why.
+- Bash, `set -euo pipefail`, `shellcheck -x kiosk install.sh lib/session lib/start lib/distro.sh` clean, with no
+  disabled checks unless a comment says why. A comment above every function.
+- Distribution differences go in `lib/distro.sh`. Nothing may depend on particular hardware.
+- Test installs in a container with systemd (see PLAN.md, *Checked so far*); the screen itself needs real hardware.
+- When behavior changes, update README, TESTING.md and PLAN.md in the same change.
 - Safe to run twice. Never overwrite a setting without asking.
 - Everything the installer adds, `kiosk uninstall` removes.

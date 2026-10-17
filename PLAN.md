@@ -1,94 +1,50 @@
 # Kiosk: Plan for Version 1.0
 
-**Status:** draft for Randy's review. No code has been written yet.
+**Status:** first version written; ready for testing on real hardware. See [README.md](README.md) for how it works
+and [TESTING.md](TESTING.md) for the release test.
 
-**What it is:** Works In All Things Kiosk. One command turns a fresh Debian computer into a TV player that opens
-one web address full screen, starts on power-up, and recovers on its own. It's made for the Signage Player URL and
-works just as well for the Parent Page number board, or any page that should fill a screen.
+**What it is:** Works In All Things Kiosk. One command turns a Linux computer into a TV player that opens one web
+address full screen, starts on power-up, and recovers on its own. It's made for the Signage Player URL and works
+just as well for the Parent Page number board, or any page that should fill a screen.
 
----
+## Decisions
 
-## 1. What the church does
+| Question | Decision |
+|---|---|
+| Free or paid? | **Free and public**, MIT license. |
+| Which distributions? | **Any** with systemd and apt, dnf, pacman or zypper. Tested first: Debian 12/13, Raspberry Pi OS Lite (64-bit), Ubuntu 24.04, Fedora. |
+| Raspberry Pi | **Raspberry Pi OS Lite (64-bit)** on the Pi 5 (and Pi 4). |
+| Hardware | **Not tied to any.** 64-bit Intel/AMD or ARM, 4 GB memory; the distribution's own drivers. |
+| Browser | The distribution's Chromium where it's a real package with full video support (Debian, Raspberry Pi OS, Mint, Arch). Otherwise Chromium from **Flathub** (Ubuntu's is a snap; Fedora's and openSUSE's can't play H.264 MP4s). |
+| Display | **cage**, packaged by every supported distribution. |
+| In 1.0 | Screen off/on times, rotation, nightly restart, Wi-Fi set-up, automatic updates. |
+| Later | SSH set-up during install, HDMI-CEC (turning the TV itself off), showing the IP address on screen. |
 
-1. Install **Debian 12 or 13** (no desktop) on a mini PC, or **Raspberry Pi OS Lite (64-bit)** on a Raspberry Pi 5.
-2. Log in and run:
+## How it fits together
 
-   ```bash
-   curl -fsSL https://worksinallthings.com/kiosk/install.sh | sudo bash
-   ```
-
-3. Paste the **Player URL** when asked (and pick Wi-Fi, screen rotation and the screen's time zone if needed).
-4. The computer restarts and plays the page. From then on it starts by itself every time it's powered on.
-
-Changing it later: `sudo kiosk url <new address>`, `sudo kiosk status`, `sudo kiosk restart`, `sudo kiosk update`,
-`sudo kiosk uninstall`.
-
-## 2. What gets installed
-
-| Part | Choice | Why |
+| File | Installed to | What it does |
 |---|---|---|
-| Display | **cage**, a Wayland compositor that runs exactly one app full screen | No desktop, no window manager, nothing to click away. In Debian 12, 13 and Raspberry Pi OS. |
-| Browser | **Chromium** from the distribution | Signage is tested on Chromium; updates come with normal security updates. On the Pi, Raspberry Pi OS's own Chromium build has hardware video decoding. |
-| Start-up | A **systemd service** (`kiosk.service`) on tty1, running as a locked-down `kiosk` user | Starts at boot, restarts within seconds if the browser crashes. No auto-login shell. |
-| Browser data | A **persistent profile** in `/var/lib/kiosk` | Signage's offline storage survives restarts, so a kiosk that boots with no network still plays (better than Porteus, which forgets everything). |
-| Network | **NetworkManager**, Wi-Fi set up during install | `sudo nmtui` changes it later. |
-| Video | Intel: `intel-media-va-driver` (VA-API). Pi 5: Raspberry Pi OS's driver | Smooth 1080p video without maxing the CPU. Checked on real hardware (section 5). |
-| Audio | PipeWire, with HDMI as the output | For video sound. Chromium is started with `--autoplay-policy=no-user-gesture-required`. |
-| Updates | **unattended-upgrades** for security updates, and an optional nightly restart (default 3:30 am) | A TV nobody touches for a year stays patched and fresh. |
-| Settings | `/etc/kiosk/kiosk.conf` (plain text: URL, rotation, restart time, screen on/off times) | Easy to read and copy between kiosks. |
+| `install.sh` | (run once, from the website) | Downloads the latest release and runs `kiosk install`. |
+| `kiosk` | `/usr/local/lib/kiosk/kiosk`, linked from `/usr/local/bin/kiosk` | The installer and every command. |
+| `lib/distro.sh` | `/usr/local/lib/kiosk/lib/` | Finds the package manager and the package names for each distribution family. |
+| `lib/start` | `/usr/local/lib/kiosk/lib/` | Starts cage (with `-r` rotation on cage before 0.1.5). |
+| `lib/session` | `/usr/local/lib/kiosk/lib/` | Runs inside cage: rotation with wlr-randr, waits for the network, clears the crash flag, starts Chromium. |
+| `lib/pam-kiosk` | `/etc/pam.d/kiosk` | The login session, so the kiosk user gets the screen, sound and a session bus. |
+| `systemd/*` | `/etc/systemd/system/` | The kiosk service, the screen, restart and browser-update jobs. The daily timers are written from the settings. |
+| (written) | `/etc/kiosk/kiosk.conf` | The settings. |
+| (written) | `/etc/kiosk/install-state` | What was on before (desktop login, console login), so uninstall can put it back. |
 
-Chromium starts with `--kiosk`, no first-run screens, no "restore pages?" bubble, no translate bar, no update nags,
-and no pop-ups. No mouse pointer shows unless a mouse is plugged in.
+## Checked so far
 
-## 3. Nice extras (each one optional, decided in section 6)
+- `shellcheck` is clean.
+- A full install on Ubuntu 24.04 in a container with systemd: packages, the `kiosk` user, the login session on
+  tty1 (seat0), the timers in the right time zone, settings with unusual characters, and the commands.
+- Not checked yet: anything on a real screen, Debian, Raspberry Pi OS, Fedora, Arch or openSUSE (their package
+  mirrors and Flathub can't be reached from where it was written). That's what TESTING.md is for.
 
-- **Screen off at night:** turn the HDMI output off and on at set times (`wlopm`), or the TV itself via HDMI-CEC
-  where the TV supports it.
-- **Rotation** for portrait TVs: 0, 90, 180 or 270.
-- **Remote help:** SSH on, with a key or password you choose during install. Off by default.
-- **Show the address on screen at boot** for 10 seconds (IP address and host name), so you can find it to SSH in.
+## Next
 
-**One thing to check first:** rotation and screen off/on need cage 0.2 (in Debian 13). Debian 12 has cage 0.1.4,
-which may not support them. If it doesn't, Debian 12 uses a small X11 set-up instead (Xorg running only Chromium),
-with the same `kiosk` command and settings. I'll confirm this before writing the rest.
-
-## 4. How it's built
-
-- One Bash installer, `install.sh`, plus the `kiosk` command and the service files it installs. It checks it's on
-  Debian 12/13 or Raspberry Pi OS (64-bit), and stops with a clear message otherwise.
-- Safe to run again: running it twice gives the same result, and it never overwrites settings without asking.
-- `kiosk uninstall` removes everything it added and puts the computer back to a normal console login.
-- Checks: `shellcheck` clean; an automated install test in Debian 12 and 13 containers (everything except the
-  screen); then the hardware tests below.
-- Releases are tagged. The website serves the current `install.sh`, which downloads that tagged release, so the
-  one-line command never changes.
-
-## 5. Testing on your hardware (about a week)
-
-| Test | Intel mini PC (Debian 12) | Intel mini PC (Debian 13) | Raspberry Pi 5 |
-|---|---|---|---|
-| Install from the one-line command, wired and Wi-Fi | | | |
-| Boots straight into the Player URL; no pop-ups or bars | | | |
-| 1080p video plays smoothly (and 4K if the TV does) | | | |
-| HDMI audio | | | |
-| Signage offline tests O1–O11, including O5 (restart while offline) | | | |
-| Pull the power, plug it back in: plays again | | | |
-| Browser killed (`sudo pkill chromium`): back within 10 seconds | | | |
-| Rotation, screen off/on times, nightly restart | | | |
-| `kiosk url`, `kiosk update`, `kiosk uninstall` | | | |
-| A week of running without being touched | | | |
-
-## 6. Questions for you
-
-1. **Free or paid?** A free download (MIT license, the repo public) helps sell Signage and Parent Page. Paid would
-   need a license check, which is a lot more work for a script.
-2. **Which Pi OS?** Plain Debian on the Pi 5 still lacks good video drivers, so I'd support **Raspberry Pi OS Lite
-   (64-bit)** there. Is that OK?
-3. **Extras for 1.0:** which of section 3 do you want in 1.0? I'd suggest screen off at night (`wlopm` only),
-   rotation and the nightly restart, with SSH and HDMI-CEC later.
-4. **Install questions:** URL, Wi-Fi, rotation and time zone are asked during install. Anything else?
-5. **Hardware:** which mini PC models do you have to test on?
-
-## 7. Time
-
-About 2–4 days to write it, then about a week of testing on real hardware.
+1. Randy tests on the Intel mini PCs and the Raspberry Pi 5 (TESTING.md).
+2. Fix what that finds, then tag `v1.0.0` (a GitHub release), which `install.sh` and `kiosk update` download.
+3. Add a `/kiosk/` page to the website with the install command and a copy of `install.sh` at
+   `/kiosk/install.sh`, and link it from the Signage and Parent Page pages.

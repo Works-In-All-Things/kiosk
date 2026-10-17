@@ -1,0 +1,11 @@
+# Works In All Things Kiosk: checks for a browser update once a day.
+[Unit]
+Description=Update the kiosk browser daily
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

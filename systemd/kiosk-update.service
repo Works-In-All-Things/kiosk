@@ -1,0 +1,10 @@
+# Works In All Things Kiosk: updates the Flathub browser, when the kiosk uses it. The distribution's own
+# packages are updated by its automatic updates.
+[Unit]
+Description=Update the kiosk browser
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/kiosk update-browser

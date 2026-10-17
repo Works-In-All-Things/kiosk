@@ -1,0 +1,6 @@
+#%PAM-1.0
+# Works In All Things Kiosk: the login session for the kiosk display. The kiosk user can't log in any other way.
+auth     required pam_permit.so
+account  required pam_permit.so
+session  optional pam_loginuid.so
+session  required pam_systemd.so
