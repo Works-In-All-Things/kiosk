@@ -601,7 +601,11 @@ cmd_update() {
     # shellcheck disable=SC2064 # The folder is known now and must be removed whatever happens later.
     trap "rm -rf '$dir'" EXIT
     info "Downloading Kiosk ($ref)"
-    curl -fsSL "https://github.com/$KIOSK_REPO/archive/$ref.tar.gz" | tar -xz -C "$dir" --strip-components 1 ||
+    # A release tag, or else a branch (branch names such as "feature/x" only work in the long form).
+    curl -fsSL "https://github.com/$KIOSK_REPO/archive/refs/tags/$ref.tar.gz" 2>/dev/null |
+        tar -xz -C "$dir" --strip-components 1 2>/dev/null ||
+        curl -fsSL "https://github.com/$KIOSK_REPO/archive/refs/heads/$ref.tar.gz" |
+        tar -xz -C "$dir" --strip-components 1 ||
         die "Couldn't download $ref."
     bash "$dir/kiosk" install --update
 }

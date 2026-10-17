@@ -55,7 +55,11 @@ main() {
     # shellcheck disable=SC2064 # The folder is known now and must be removed whatever happens later.
     trap "rm -rf '$dir'" EXIT
     echo "Downloading Works In All Things Kiosk ($ref)"
-    download "https://github.com/$KIOSK_REPO/archive/$ref.tar.gz" | tar -xz -C "$dir" --strip-components 1 ||
+    # A release tag, or else a branch (branch names such as "feature/x" only work in the long form).
+    download "https://github.com/$KIOSK_REPO/archive/refs/tags/$ref.tar.gz" 2>/dev/null |
+        tar -xz -C "$dir" --strip-components 1 2>/dev/null ||
+        download "https://github.com/$KIOSK_REPO/archive/refs/heads/$ref.tar.gz" |
+        tar -xz -C "$dir" --strip-components 1 ||
         die "Couldn't download Kiosk ($ref)."
     bash "$dir/kiosk" install "$@"
 }
