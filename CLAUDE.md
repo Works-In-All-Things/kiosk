@@ -11,8 +11,8 @@ Status: first version written, waiting for hardware tests. See [PLAN.md](PLAN.md
 - Commit as **Randy Reed <randy.reed23@gmail.com>** (`git -c user.name="Randy Reed" -c user.email="randy.reed23@gmail.com" commit …`).
 - Never write "tested on X" in any doc until Randy confirms the test passed.
 - No AI model names or identifiers in commits, code or docs.
-- Related repos: the Signage plugin is `randyjreed/rocksign`; the website (`/kiosk/` page and the hosted
-  `install.sh`) is `randyjreed/worksinallthings-site`.
+- Related repos: the Signage plugin is `Works-In-All-Things/rocksign`; the website (`/kiosk/` page and the hosted
+  `install.sh`) is `Works-In-All-Things/worksinallthings-site`.
 
 ## Code rules
 

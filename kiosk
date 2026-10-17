@@ -3,7 +3,7 @@
 # Signage Player URL. Run "kiosk help" for the commands.
 set -euo pipefail
 
-KIOSK_REPO=randyjreed/kiosk
+KIOSK_REPO=Works-In-All-Things/kiosk
 INSTALL_DIR=/usr/local/lib/kiosk
 COMMAND_LINK=/usr/local/bin/kiosk
 CONFIG_DIR=/etc/kiosk

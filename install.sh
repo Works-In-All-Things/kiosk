@@ -16,7 +16,7 @@
 # Everything is inside main(), so a download cut off part way through runs nothing.
 set -euo pipefail
 
-KIOSK_REPO=randyjreed/kiosk
+KIOSK_REPO=Works-In-All-Things/kiosk
 
 # Prints an error and stops.
 die() {
