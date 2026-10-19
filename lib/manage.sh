@@ -91,6 +91,8 @@ rock_message() {
         printf '%s' "$message"
     elif [[ $RESPONSE_STATUS == 000 ]]; then
         printf "Couldn't reach Rock: %s" "${RESPONSE_BODY:0:200}"
+    elif [[ $RESPONSE_STATUS == bad-answer ]]; then
+        printf '%s' "$RESPONSE_BODY"
     elif [[ $RESPONSE_STATUS == 404 ]]; then
         printf 'Rock answered 404. Check the address, and that the Kiosk Manager plugin is installed.'
     else
@@ -164,7 +166,10 @@ heartbeat_body() {
     systemctl is-active --quiet kiosk.service 2>/dev/null && browser_running=true
     is_screen_off && screen_on=false
     problem=$(journalctl -u kiosk.service -p err --since -1h -n 1 -o cat --no-pager 2>/dev/null | tail -n 1 || true)
-    [[ -f $MANAGER_STATE/results ]] || set_state results ""
+    local results
+    # One result per line. A line cut short (by a power cut, say) is skipped rather than spoiling the heartbeat.
+    results=$(jq -cn '[inputs]' "$MANAGER_STATE/results" 2>/dev/null ||
+        jq -Rcn '[inputs | fromjson? | objects]' "$MANAGER_STATE/results" 2>/dev/null || echo '[]')
     jq -n \
         --arg token "$token" \
         --arg kioskVersion "$KIOSK_VERSION" \
@@ -182,7 +187,7 @@ heartbeat_body() {
         --argjson appliedSettingsVersion "$(json_number "$(get_state applied-version)")" \
         --arg settingsProblem "$(get_state settings-problem)" \
         --arg lastProblem "${problem:0:500}" \
-        --slurpfile actionResults "$MANAGER_STATE/results" \
+        --argjson actionResults "$results" \
         '{token: $token, kioskVersion: $kioskVersion, hostname: $hostname, localIpAddresses: $localIpAddresses,
           osName: $osName, browserName: $browserName, uptimeSeconds: $uptimeSeconds,
           diskFreeMegabytes: $diskFreeMegabytes, memoryAvailableMegabytes: $memoryAvailableMegabytes,
@@ -339,6 +344,15 @@ send_heartbeat() {
     sent_results=$(get_state results)
     body=$(heartbeat_body "$token")
     rock_post "$address" heartbeat "$body" "$allow_http"
+
+    # Only an answer from Kiosk Manager itself counts: a captive portal or proxy can answer 200 or 401 too.
+    if [[ $RESPONSE_STATUS == 200 ]] && ! jq -e '.heartbeatSeconds | numbers' >/dev/null 2>&1 <<<"$RESPONSE_BODY"; then
+        RESPONSE_STATUS=bad-answer
+        RESPONSE_BODY="Rock's answer wasn't from Kiosk Manager. Check the Rock address."
+    elif [[ $RESPONSE_STATUS == 401 ]] && ! jq -e '.message | strings' >/dev/null 2>&1 <<<"$RESPONSE_BODY"; then
+        RESPONSE_STATUS=bad-answer
+        RESPONSE_BODY="Something between this computer and Rock refused the heartbeat (401). Check the Rock address."
+    fi
 
     case $RESPONSE_STATUS in
         200)

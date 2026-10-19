@@ -116,7 +116,9 @@ How it works:
   `http://`, add `--allow-http`.
 - While Rock manages a kiosk, the `kiosk` command shows its settings but won't change them (it says to change them in
   Rock). The screen on/off and restart commands still work.
-- If Rock can't be reached, the kiosk carries on with its current settings and tries again each minute. If the
+- If Rock can't be reached (or something in between, such as a Wi-Fi sign-in page, answers instead of Kiosk
+  Manager), the kiosk carries on with its current settings and tries again each minute. A kiosk made inactive in
+  Rock is paused: it keeps reporting in, but gets no settings or actions until it's active again. If the
   kiosk is removed in Rock or given a new code, it keeps showing what it shows and stops sending heartbeats;
   `kiosk status` says so.
 - `sudo kiosk unmanage` stops it: the settings stay as they are and the `kiosk` command can change them again.
