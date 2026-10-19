@@ -17,8 +17,8 @@ just as well for the Parent Page number board, or any page that should fill a sc
 | Hardware | **Not tied to any.** 64-bit Intel/AMD or ARM, 4 GB memory; the distribution's own drivers. |
 | Browser | The distribution's Chromium where it's a real package with full video support (Debian, Raspberry Pi OS, Mint, Arch). Otherwise Chromium from **Flathub** (Ubuntu's is a snap; Fedora's and openSUSE's can't play H.264 MP4s). |
 | Display | **cage**, packaged by every supported distribution. |
-| In 1.0 | Screen off/on times, rotation, resolution, nightly restart, automatic updates. Network settings are left alone (the computer is already online to download the installer). |
-| Later | SSH set-up during install, HDMI-CEC (turning the TV itself off), showing the IP address on screen. Management from Rock: an optional agent for the **Kiosk Manager** plugin (Kiosk 1.1, planned in `Works-In-All-Things/kiosk-manager`). Kiosk never runs Rock check-in. |
+| In 1.0 | Screen off/on times, rotation, resolution, nightly restart, automatic updates, and optional management from Rock: an agent for the **Kiosk Manager** plugin (`kiosk manage`, planned in `Works-In-All-Things/kiosk-manager`, §7 of its PLAN.md). Network settings are left alone (the computer is already online to download the installer). Kiosk never runs Rock check-in. |
+| Later | SSH set-up during install, HDMI-CEC (turning the TV itself off), showing the IP address on screen. |
 
 ## How it fits together
 
@@ -49,7 +49,10 @@ just as well for the Parent Page number board, or any page that should fill a sc
 
 ## Next
 
-1. Randy tests on the Intel mini PCs and the Raspberry Pi 5 (TESTING.md). Ubuntu 26.04 is done.
-2. Fix what that finds, then tag `v1.0.0` (a GitHub release), which `install.sh` and `kiosk update` download.
-3. Add a `/kiosk/` page to the website with the install command and a copy of `install.sh` at
+1. Add the Kiosk Manager agent (Kiosk Manager's Milestone A). The version stays **1.0.0**.
+2. Randy tests the other distributions along the way: the Intel mini PCs and the Raspberry Pi 5 (TESTING.md).
+   Ubuntu 26.04 is done.
+3. Once the agent's heartbeat format is settled, tag `v1.0.0` (a GitHub release), which `install.sh` and
+   `kiosk update` download.
+4. Add a `/kiosk/` page to the website with the install command and a copy of `install.sh` at
    `/kiosk/install.sh`, and link it from the Signage and Parent Page pages.
