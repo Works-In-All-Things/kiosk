@@ -1,6 +1,6 @@
 # Kiosk: Plan for Version 1.0
 
-**Status:** the release test passed on Ubuntu 26.04; the other distributions are still to test. See [README.md](README.md) for how it works
+**Status:** version 1.0.0 is released, with the Kiosk Manager agent. The release test passed on Ubuntu 26.04; the other distributions are still to test. See [README.md](README.md) for how it works
 and [TESTING.md](TESTING.md) for the release test.
 
 **What it is:** Works In All Things Kiosk. One command turns a Linux computer into a TV player that opens one web
@@ -58,12 +58,14 @@ just as well for the Parent Page number board, or any page that should fill a sc
    Kiosk Manager's test (its Milestone A); the update fix is confirmed.
 2. Randy tests the other distributions along the way: the Intel mini PCs and the Raspberry Pi 5 (TESTING.md,
    including section 7). Ubuntu 26.04 is done.
-3. **Release v1.0.0** (Kiosk Manager's Milestone C needs it first). In this order:
-   1. The heartbeat format is settled: Kiosk Manager's release build passes its test with this branch. From here on
-      the JSON names in `lib/manage.sh` never change.
-   2. Set `VERSION` to `1.0.0` (it's `1.0.0-dev` on the branch).
-   3. Merge the branch into `main` (a pull request), then tag `v1.0.0` on `main` and publish a GitHub release.
-      `install.sh` and `kiosk update` download the latest release.
+3. **Release v1.0.0** (Kiosk Manager's Milestone C needs it first). Randy chose to release on 2026-10-19. In this
+   order:
+   1. ~~The heartbeat format is settled.~~ From here on the JSON names in `lib/manage.sh` never change; Kiosk
+      Manager's remaining tests run against the release.
+   2. ~~Set `VERSION` to `1.0.0`.~~
+   3. Merge the branch into `main` (a pull request), then tag `v1.0.0` on `main` and publish a GitHub release
+      from the tag. `install.sh` and `kiosk update` download the latest *published release*
+      (`releases/latest`), so a tag on its own isn't enough.
    4. On a test kiosk, `sudo kiosk update` (it moves from the branch to the release), then
       `sudo kiosk update` again: *up to date*.
 4. ~~Add a `/kiosk/` page to the website.~~ Written on the website's branch: `/kiosk/` (install command,
