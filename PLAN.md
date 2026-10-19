@@ -66,6 +66,9 @@ just as well for the Parent Page number board, or any page that should fill a sc
       `install.sh` and `kiosk update` download the latest release.
    4. On a test kiosk, `sudo kiosk update` (it moves from the branch to the release), then
       `sudo kiosk update` again: *up to date*.
-4. Add a `/kiosk/` page to the website with the install command and a copy of `install.sh` at
-   `/kiosk/install.sh` (the command Kiosk Manager shows downloads it from there), and link it from the Signage,
-   Parent Page and Kiosk Manager pages.
+4. ~~Add a `/kiosk/` page to the website.~~ Written on the website's branch: `/kiosk/` (install command,
+   requirements, commands, troubleshooting) and a copy of `install.sh` at `/kiosk/install.sh` (the command Kiosk
+   Manager shows downloads it from there), linked from every page's footer, the plugins page and the Signage pages.
+   **Deploy it only after step 3**: before the release, the installer falls back to `main`, whose `kiosk` doesn't
+   take the `--source` and `--commit` options it passes. Whenever `install.sh` changes, copy it to the website too.
+   Link the Kiosk Manager page once it's on the Rock Shop.
