@@ -22,6 +22,8 @@ SOURCE_DIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
 KIOSK_VERSION=$(cat "$SOURCE_DIR/VERSION" 2>/dev/null || echo unknown)
 # shellcheck source=lib/distro.sh
 . "$SOURCE_DIR/lib/distro.sh"
+# shellcheck source=lib/manage.sh
+. "$SOURCE_DIR/lib/manage.sh"
 
 # Messages ----------------------------------------------------------------------------------------------------
 
@@ -259,7 +261,7 @@ check_system() {
 cmd_install() {
     local -a packages
     local url="" rotation="" resolution="" resolution_set=no timezone="" screen_off="" screen_on="" restart_time="" browser=auto
-    local update=no screen_set=no restart_set=no reboot=no
+    local update=no screen_set=no restart_set=no reboot=no manage_address="" manage_code="" allow_http=no
     while [[ $# -gt 0 ]]; do
         case $1 in
             --url) url=${2:-}; shift 2 ;;
@@ -273,6 +275,9 @@ cmd_install() {
             --yes | -y) ASSUME_YES=yes; shift ;;
             --update) update=yes; ASSUME_YES=yes; shift ;;
             --reboot) reboot=yes; shift ;;
+            --manage) manage_address=${2:-}; shift 2 ;;
+            --code) manage_code=${2:-}; shift 2 ;;
+            --allow-http) allow_http=yes; shift ;;
             *) die "Unknown option: $1 (see: kiosk help)" ;;
         esac
     done
@@ -290,6 +295,12 @@ cmd_install() {
     fi
 
     printf '\n\033[1mWorks In All Things Kiosk %s\033[0m on %s\n\n' "$KIOSK_VERSION" "$DISTRO_NAME"
+    if [[ -n $manage_address || -n $manage_code ]]; then
+        [[ -n $manage_address && -n $manage_code ]] || die "Use --manage <rock address> --code <code> together (both are on the kiosk's page in Rock)."
+        install_managed "$manage_address" "$manage_code" "$allow_http" "$browser" "$reboot"
+        return
+    fi
+    refuse_if_managed settings
     [[ -n $(get_setting URL) ]] && info "Kiosk is already installed. Your settings are kept unless you change them."
 
     # Questions first, so the rest runs without stopping. A wrong answer is asked again.
@@ -397,6 +408,60 @@ cmd_install() {
     fi
 }
 
+# Installs Kiosk managed by Rock ("kiosk install --manage <rock address> --code <code>"). There are no questions:
+# the computer is linked to its kiosk in Rock first thing after the packages are installed, and Rock's settings
+# (the address, time zone, rotation, screen and restart times) are used.
+install_managed() {
+    local address=$1 code=$2 allow_http=$3 browser=$4 reboot=$5 display_manager="" url
+    [[ $address == http://* && $allow_http != yes ]] &&
+        die "The Rock address is http://, so this computer's token would cross the network unencrypted. Use https://, or add --allow-http (for a test server)."
+    if [[ -L $UNIT_DIR/display-manager.service ]]; then
+        display_manager=$(readlink -f "$UNIT_DIR/display-manager.service")
+        display_manager=${display_manager##*/}
+    fi
+    if [[ -n $display_manager && $display_manager != kiosk.service ]]; then
+        confirm "This computer starts a desktop ($display_manager). Turn it off so the kiosk can use the screen?" y ||
+            die "Kiosk needs the screen. Nothing was changed."
+    fi
+
+    info "Installing packages. This takes a few minutes; the details go to $INSTALL_LOG."
+    : >"$INSTALL_LOG"
+    quietly pkg_refresh || die "Couldn't refresh the package lists. Check the network and run the installer again."
+    local -a packages
+    mapfile -t packages < <(required_packages)
+    pkg_install "${packages[@]}"
+    mapfile -t packages < <(optional_packages)
+    pkg_install_optional "${packages[@]}"
+    install_browser "$browser"
+    enable_automatic_updates
+
+    info "Setting up the kiosk"
+    timedatectl set-ntp true 2>/dev/null || true
+    create_user
+    install_files
+    write_default_config
+    set_setting BROWSER "$KIOSK_BROWSER"
+    manage_enroll "$address" "$code" "$allow_http"
+    send_heartbeat no-restart || die "Linked to Rock, but couldn't get the kiosk's settings: $(rock_message). Run: sudo kiosk heartbeat"
+    url=$(get_setting URL)
+    [[ -n $url ]] || die "Rock didn't send an address to show. Set one on the kiosk's page in Rock, then run: sudo kiosk heartbeat"
+
+    if [[ -n $display_manager && $display_manager != kiosk.service ]]; then
+        remember DISPLAY_MANAGER "$display_manager"
+        systemctl disable "$display_manager" >/dev/null 2>&1 || true
+    fi
+    remember GETTY_TTY1 "$(systemctl is-enabled getty@tty1.service 2>/dev/null || echo enabled)"
+    enable_units
+
+    printf '\n\033[1mKiosk is installed and managed by Rock.\033[0m It shows %s full screen whenever this computer starts.\n' "$url"
+    echo "Change its settings on its page in Rock."
+    if [[ $reboot == yes ]] || { can_ask && confirm "Restart now to start it?" y; }; then
+        systemctl reboot
+    else
+        echo "Restart the computer to start it."
+    fi
+}
+
 # Installs the browser: the distribution's Chromium where it has full video support, otherwise Chromium from
 # Flathub. Sets KIOSK_BROWSER to "flatpak" or the browser's path.
 install_browser() {
@@ -474,6 +539,9 @@ enable_units() {
     systemctl daemon-reload
     systemctl disable getty@tty1.service >/dev/null 2>&1 || true
     systemctl enable kiosk.service kiosk-update.timer >/dev/null
+    if is_managed; then
+        systemctl enable kiosk-heartbeat.timer >/dev/null
+    fi
 }
 
 # Writes the screen and restart timers from the settings, and turns each on or off.
@@ -522,6 +590,7 @@ cmd_url() {
     fi
     require_root url
     require_installed
+    refuse_if_managed address
     is_url "$1" || die "The address must start with https:// or http://."
     set_setting URL "$1"
     systemctl restart kiosk.service
@@ -532,6 +601,7 @@ cmd_url() {
 cmd_rotate() {
     require_root rotate
     require_installed
+    refuse_if_managed rotation
     [[ ${1:-} =~ ^(0|90|180|270)$ ]] || die "Use: kiosk rotate 0|90|180|270"
     set_setting ROTATION "$1"
     systemctl restart kiosk.service
@@ -542,6 +612,7 @@ cmd_rotate() {
 cmd_resolution() {
     require_root resolution
     require_installed
+    refuse_if_managed resolution
     local resolution=${1:-}
     [[ -n $resolution ]] || die "Use: kiosk resolution 1920x1080|auto"
     [[ $resolution == auto ]] && resolution=""
@@ -559,6 +630,7 @@ cmd_resolution() {
 cmd_restart_time() {
     require_root restart-time
     require_installed
+    refuse_if_managed "restart time"
     local time=${1:-}
     [[ $time == off ]] && time=""
     [[ -z $time ]] || is_time "$time" || die "Use: kiosk restart-time HH:MM|off"
@@ -585,6 +657,7 @@ cmd_screen() {
         off)
             require_root screen
             rm -f "$SCREEN_ON_FLAG"
+            touch "$SCREEN_OFF_FLAG"
             systemctl stop kiosk.service
             blank_screen 4
             info "The screen is off. Turn it on with: sudo kiosk screen on"
@@ -592,6 +665,7 @@ cmd_screen() {
         on)
             require_root screen
             touch "$SCREEN_ON_FLAG"
+            rm -f "$SCREEN_OFF_FLAG"
             blank_screen 0
             systemctl start kiosk.service
             info "The screen is on."
@@ -599,6 +673,7 @@ cmd_screen() {
         schedule)
             require_root screen
             require_installed
+            refuse_if_managed "screen times"
             if [[ ${2:-} == off ]]; then
                 set_setting SCREEN_OFF ""
                 set_setting SCREEN_ON ""
@@ -627,7 +702,9 @@ cmd_screen() {
 blank_screen() {
     local blank
     for blank in /sys/class/graphics/fb*/blank; do
-        [[ -w $blank ]] && echo "$1" >"$blank" 2>/dev/null || true
+        if [[ -w $blank ]]; then
+            echo "$1" >"$blank" 2>/dev/null || true
+        fi
     done
 }
 
@@ -683,13 +760,14 @@ cmd_status() {
     printf '  %-18s %s\n' "Time zone:" "$(timedatectl show --property=Timezone --value 2>/dev/null || echo unknown)"
     printf '  %-18s %s\n' "Host name:" "$(hostname)"
     printf '  %-18s %s\n' "IP addresses:" "${addresses:-none}"
+    manage_status
     echo
     echo "Recent messages: sudo kiosk logs"
 }
 
 # Shows the kiosk's recent log messages.
 cmd_logs() {
-    journalctl -u kiosk.service -n "${1:-100}" --no-pager
+    journalctl -u kiosk.service -u kiosk-heartbeat.service -n "${1:-100}" --no-pager
 }
 
 # Updates -----------------------------------------------------------------------------------------------------
@@ -736,11 +814,13 @@ cmd_uninstall() {
 
     info "Removing Kiosk"
     local name display_manager getty
-    for name in kiosk.service kiosk-update.timer kiosk-screen-off.timer kiosk-screen-on.timer kiosk-reboot.timer; do
+    for name in kiosk.service kiosk-update.timer kiosk-screen-off.timer kiosk-screen-on.timer kiosk-reboot.timer \
+        kiosk-heartbeat.timer; do
         systemctl disable --now "$name" >/dev/null 2>&1 || true
     done
     for name in kiosk.service kiosk-screen-off.service kiosk-screen-on.service kiosk-reboot.service \
-        kiosk-update.service kiosk-update.timer kiosk-screen-off.timer kiosk-screen-on.timer kiosk-reboot.timer; do
+        kiosk-update.service kiosk-update.timer kiosk-screen-off.timer kiosk-screen-on.timer kiosk-reboot.timer \
+        kiosk-heartbeat.service kiosk-heartbeat.timer; do
         rm -f "$UNIT_DIR/$name"
     done
     systemctl daemon-reload
@@ -764,7 +844,8 @@ cmd_uninstall() {
         pkill -KILL -u "$KIOSK_USER" >/dev/null 2>&1 || true
         userdel "$KIOSK_USER" || warn "Couldn't remove the $KIOSK_USER user."
     fi
-    rm -rf "$KIOSK_HOME" "$CONFIG_DIR" /etc/pam.d/kiosk "$COMMAND_LINK" "$INSTALL_DIR" "$INSTALL_LOG"
+    rm -rf "$KIOSK_HOME" "$CONFIG_DIR" /etc/pam.d/kiosk "$COMMAND_LINK" "$INSTALL_DIR" "$INSTALL_LOG" \
+        "$SCREEN_OFF_FLAG" "$LOCK_FILE"
 
     info "Kiosk is removed. The packages it installed (such as cage and Chromium) are still there."
     [[ -z $display_manager ]] || echo "The desktop ($display_manager) starts again after a restart."
@@ -792,6 +873,9 @@ Works In All Things Kiosk $KIOSK_VERSION: shows one web address full screen, fro
   kiosk status                        Show what the kiosk is doing
   sudo kiosk logs                     Show recent messages
   sudo kiosk update                   Update Kiosk to the latest release
+  sudo kiosk manage <rock address> <code>
+                                      Let Rock manage this kiosk (Kiosk Manager plugin)
+  sudo kiosk unmanage                 Stop Rock managing this kiosk
   sudo kiosk uninstall                Remove Kiosk
 
 Install options (for installing without questions):
@@ -800,14 +884,31 @@ Install options (for installing without questions):
   --screen-off HH:MM --screen-on HH:MM
   --restart-time HH:MM|off            --browser auto|native|flatpak
   --yes (no questions)                --reboot (restart when done)
+  --manage <rock address> --code <code>
+                                      Managed by Rock: its settings come from the kiosk's page in Rock
+  --allow-http                        Allow an http:// Rock address (test servers only)
 
 Help and support: https://worksinallthings.com/kiosk/
 EOF
 }
 
+# True when a command changes something, so it takes the kiosk lock first. Showing settings and the kiosk
+# service's own "screen check" don't, so they never wait.
+is_locking_command() {
+    case $1 in
+        install | rotate | resolution | restart-time | restart | update | uninstall | manage | unmanage) return 0 ;;
+        url) [[ -n ${2:-} ]] ;;
+        screen) [[ ${2:-} != check ]] ;;
+        *) return 1 ;;
+    esac
+}
+
 main() {
     local command=${1:-help}
     [[ $# -gt 0 ]] && shift
+    if [[ $EUID -eq 0 ]] && is_locking_command "$command" "${1:-}"; then
+        take_lock || die "Another kiosk command is running (or Rock is updating this kiosk). Try again in a minute."
+    fi
     case $command in
         install) cmd_install "$@" ;;
         url) cmd_url "$@" ;;
@@ -820,6 +921,9 @@ main() {
         logs) cmd_logs "$@" ;;
         update) cmd_update "$@" ;;
         update-browser) cmd_update_browser ;;
+        manage) cmd_manage "$@" ;;
+        unmanage) cmd_unmanage ;;
+        heartbeat) cmd_heartbeat ;;
         uninstall) cmd_uninstall "$@" ;;
         version | --version) echo "$KIOSK_VERSION" ;;
         help | --help | -h) cmd_help ;;

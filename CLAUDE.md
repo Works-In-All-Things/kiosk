@@ -18,7 +18,7 @@ check-in. See [PLAN.md](PLAN.md), [README.md](README.md) and
 
 ## Code rules
 
-- Bash, `set -euo pipefail`, `shellcheck -x kiosk install.sh lib/session lib/start lib/distro.sh` clean, with no
+- Bash, `set -euo pipefail`, `shellcheck -x kiosk install.sh lib/session lib/start lib/distro.sh lib/manage.sh` clean, with no
   disabled checks unless a comment says why. A comment above every function.
 - Distribution differences go in `lib/distro.sh`. Nothing may depend on particular hardware.
 - Test installs in a container with systemd (see PLAN.md, *Checked so far*); the screen itself needs real hardware.

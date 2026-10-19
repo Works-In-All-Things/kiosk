@@ -27,12 +27,14 @@ just as well for the Parent Page number board, or any page that should fill a sc
 | `install.sh` | (run once, from the website) | Downloads the latest release and runs `kiosk install`. |
 | `kiosk` | `/usr/local/lib/kiosk/kiosk`, linked from `/usr/local/bin/kiosk` | The installer and every command. |
 | `lib/distro.sh` | `/usr/local/lib/kiosk/lib/` | Finds the package manager and the package names for each distribution family. |
+| `lib/manage.sh` | `/usr/local/lib/kiosk/lib/` | Management from Rock (Kiosk Manager): `kiosk manage`, `unmanage` and `heartbeat`, and the kiosk lock. |
 | `lib/start` | `/usr/local/lib/kiosk/lib/` | Starts cage (with `-r` rotation on cage before 0.1.5). |
 | `lib/session` | `/usr/local/lib/kiosk/lib/` | Runs inside cage: resolution and rotation with wlr-randr, waits for the network, clears the crash flag, starts Chromium. |
 | `lib/pam-kiosk` | `/etc/pam.d/kiosk` | The login session, so the kiosk user gets the screen, sound and a session bus. |
 | `systemd/*` | `/etc/systemd/system/` | The kiosk service, the screen, restart and browser-update jobs. The daily timers are written from the settings. |
 | (written) | `/etc/kiosk/kiosk.conf` | The settings. |
 | (written) | `/etc/kiosk/install-state` | What was on before (desktop login, console login), so uninstall can put it back. |
+| (written) | `/etc/kiosk/manager.conf`, `/etc/kiosk/manager-state/` | Only when managed by Rock: the Rock address and token (root only), and the applied settings version, action results and last heartbeat. |
 
 ## Checked so far
 
@@ -49,7 +51,10 @@ just as well for the Parent Page number board, or any page that should fill a sc
 
 ## Next
 
-1. Add the Kiosk Manager agent (Kiosk Manager's Milestone A). The version stays **1.0.0**.
+1. Add the Kiosk Manager agent (Kiosk Manager's Milestone A). The version stays **1.0.0**. Written: `lib/manage.sh`,
+   `kiosk-heartbeat.service` and `.timer`, `kiosk install --manage`, the kiosk lock and `jq`. Checked in a
+   container against a stand-in for Rock (enrolling, settings, every action, bad values from Rock, Rock down, a
+   removed kiosk, unmanage); TESTING.md section 7 is the test on real hardware with the plugin.
 2. Randy tests the other distributions along the way: the Intel mini PCs and the Raspberry Pi 5 (TESTING.md).
    Ubuntu 26.04 is done.
 3. Once the agent's heartbeat format is settled, tag `v1.0.0` (a GitHub release), which `install.sh` and

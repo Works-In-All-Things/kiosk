@@ -58,6 +58,24 @@ Write each result in the tables at the end: ✓, ✗ (with a note), or – for n
 |---|---|---|
 | 6.1 | Leave it playing for a week with the nightly restart on. | Still playing, still on time, with no messages on screen. |
 
+## 7. Managed by Rock
+
+Needs the Kiosk Manager plugin on the Rock dev site (its TESTING.md has the Rock side).
+
+| # | Do this | You should see |
+|---|---|---|
+| 7.1 | In Rock, add a kiosk with a Player URL, rotation 0 and screen times. On a fresh install of the distribution, paste the install command Rock shows (add `KIOSK_REF=<branch>` before `bash`). | No questions except turning off a desktop. It says *Linked to the kiosk "…" in Rock* and *Applied Rock's settings*, and after the restart it shows the Player URL. In Rock the kiosk is Online within a minute, with its health filled in. |
+| 7.2 | On a computer that already runs Kiosk, make a kiosk in Rock and run `sudo kiosk manage <rock address> <code>`. | Linked, and its settings change to Rock's within a few seconds. |
+| 7.3 | Run the same command again with the used code. | *Rock didn't accept the code*; nothing changes. |
+| 7.4 | In Rock, change the address, rotation, resolution, screen times and nightly restart. | Within about a minute the kiosk shows the new address and turns the picture. `kiosk status` shows the new times. |
+| 7.5 | On the kiosk, `sudo kiosk url https://example.org`. | It refuses: the kiosk is managed by Rock. |
+| 7.6 | In Rock, press Restart Browser, Screen Off, Screen On, Reboot and Update Kiosk, one at a time. | Each happens within about a minute, and Rock's Recent Actions shows *Done* for each (Reboot after the computer is back). |
+| 7.7 | In Rock, set the time zone to `Mars/Base`. | The kiosk keeps its old time zone, and Rock shows *couldn't apply all its settings: … doesn't know the time zone*. Put it back. |
+| 7.8 | Unplug the network for 5 minutes, then plug it back in. | It keeps playing. Rock shows it Offline, then Online again within a minute of the network coming back. |
+| 7.9 | In Rock, press Make New Code. | Within a minute the kiosk stops sending heartbeats and `kiosk status` says *Managed by Rock: no longer*. It keeps showing the same address. Link it again with the new code (7.2). |
+| 7.10 | `sudo kiosk unmanage`, then `sudo kiosk url https://example.org`. | The settings stay; the address change now works. |
+| 7.11 | Link it again, then `sudo kiosk uninstall`. | `/etc/kiosk` is gone, including the token, and `kiosk-heartbeat.timer` no longer exists. |
+
 ## Results
 
 Fill in one column per computer and distribution (for example *N100 mini PC, Debian 13*).
@@ -74,3 +92,4 @@ Fill in one column per computer and distribution (for example *N100 mini PC, Deb
 | 4.1–4.8 Settings | | | | |
 | 5.1–5.2 Uninstall | | | | |
 | 6.1 A week untouched | | | | |
+| 7.1–7.11 Managed by Rock | | | | |
