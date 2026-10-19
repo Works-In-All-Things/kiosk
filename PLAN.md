@@ -52,13 +52,20 @@ just as well for the Parent Page number board, or any page that should fill a sc
 
 ## Next
 
-1. Add the Kiosk Manager agent (Kiosk Manager's Milestone A). The version stays **1.0.0**. Written: `lib/manage.sh`,
-   `kiosk-heartbeat.service` and `.timer`, `kiosk install --manage`, the kiosk lock and `jq`. Checked in a
-   container against a stand-in for Rock (enrolling, settings, every action, bad values from Rock, Rock down, a
-   removed kiosk, unmanage); TESTING.md section 7 is the test on real hardware with the plugin.
-2. Randy tests the other distributions along the way: the Intel mini PCs and the Raspberry Pi 5 (TESTING.md).
-   Ubuntu 26.04 is done.
-3. Once the agent's heartbeat format is settled, tag `v1.0.0` (a GitHub release), which `install.sh` and
-   `kiosk update` download.
+1. ~~Add the Kiosk Manager agent.~~ Done: `lib/manage.sh`, `kiosk-heartbeat.service` and `.timer`,
+   `kiosk install --manage`, the kiosk lock and `jq`, and `kiosk update` that says *up to date* and follows a test
+   branch until the first release. Randy linked the Ubuntu 26.04 kiosk to Kiosk Manager on Rock 19.4 and ran
+   Kiosk Manager's test (its Milestone A); the update fix is confirmed.
+2. Randy tests the other distributions along the way: the Intel mini PCs and the Raspberry Pi 5 (TESTING.md,
+   including section 7). Ubuntu 26.04 is done.
+3. **Release v1.0.0** (Kiosk Manager's Milestone C needs it first). In this order:
+   1. The heartbeat format is settled: Kiosk Manager's release build passes its test with this branch. From here on
+      the JSON names in `lib/manage.sh` never change.
+   2. Set `VERSION` to `1.0.0` (it's `1.0.0-dev` on the branch).
+   3. Merge the branch into `main` (a pull request), then tag `v1.0.0` on `main` and publish a GitHub release.
+      `install.sh` and `kiosk update` download the latest release.
+   4. On a test kiosk, `sudo kiosk update` (it moves from the branch to the release), then
+      `sudo kiosk update` again: *up to date*.
 4. Add a `/kiosk/` page to the website with the install command and a copy of `install.sh` at
-   `/kiosk/install.sh`, and link it from the Signage and Parent Page pages.
+   `/kiosk/install.sh` (the command Kiosk Manager shows downloads it from there), and link it from the Signage,
+   Parent Page and Kiosk Manager pages.
