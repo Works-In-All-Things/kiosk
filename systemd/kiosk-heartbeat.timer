@@ -1,0 +1,12 @@
+# Works In All Things Kiosk: the heartbeat to Rock, every minute while the kiosk is managed.
+[Unit]
+Description=Send the kiosk's heartbeat to Rock every minute
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+AccuracySec=5s
+RandomizedDelaySec=10s
+
+[Install]
+WantedBy=timers.target

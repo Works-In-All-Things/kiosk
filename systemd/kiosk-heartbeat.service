@@ -1,0 +1,22 @@
+# Works In All Things Kiosk: sends the kiosk's health to Rock and gets its settings and actions, when the kiosk is
+# managed by the Kiosk Manager plugin ("kiosk manage"). Rock never connects to the kiosk.
+[Unit]
+Description=Send the kiosk's heartbeat to Rock
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/etc/kiosk/manager.conf
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/kiosk heartbeat
+TimeoutStartSec=15min
+# It runs as root, because it changes settings, restarts the browser and reboots when Rock asks. These limit
+# what else it could reach. ProtectKernelTunables isn't used: it makes /sys read-only, and Screen Off and On write
+# to /sys/class/graphics to put the screen to sleep and wake it.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes

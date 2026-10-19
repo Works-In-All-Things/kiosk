@@ -80,12 +80,48 @@ sudo kiosk restart-time 03:30|off   Restart the computer at this time each day
 sudo kiosk restart                  Restart the browser
 kiosk status                        Show what the kiosk is doing
 sudo kiosk logs                     Show recent messages
-sudo kiosk update                   Update Kiosk to the latest release
+sudo kiosk update [branch or tag]    Update Kiosk to the latest release (does nothing if it's up to date)
+sudo kiosk manage <rock address> <code>
+                                    Let Rock manage this kiosk (see Managed by Rock)
+sudo kiosk unmanage                 Stop Rock managing this kiosk
 sudo kiosk uninstall                Remove Kiosk
 ```
 
 To use these on a running kiosk, plug in a keyboard and press **Ctrl+Alt+F2** for a login prompt (**Ctrl+Alt+F1**
 goes back), or connect over SSH if you've set it up.
+
+## Managed by Rock
+
+With the **Kiosk Manager** plugin for Rock RMS, you can manage your kiosks from Rock instead of at each computer:
+see every kiosk's health, change what it shows and when its screen turns off, and restart or reboot it. Kiosk works
+on its own without it; managing it is optional.
+
+1. In Rock, add the kiosk (**Admin Tools ▸ Installed Plugins ▸ Kiosk Manager ▸ Kiosks ▸ Add**). Rock shows a
+   one-line command with a single-use code, which works for 24 hours.
+2. On a new computer, paste the install command. It installs Kiosk without asking any questions: the address,
+   time zone, rotation, screen times and nightly restart come from Rock. On a computer that already runs Kiosk, run
+   `sudo kiosk manage <rock address> <code>` instead.
+
+How it works:
+
+- **The kiosk asks Rock; Rock never connects to the kiosk.** Once a minute (`kiosk-heartbeat.timer`) the kiosk
+  sends Rock its health (Kiosk and browser versions, uptime, free disk and memory, temperature, whether the browser
+  is running and the screen is on) and gets back its settings, when they've changed, and any actions. No ports are
+  opened and nothing changes on the network.
+- **Rock can only change the settings above and ask for five actions:** restart the browser, turn the screen off or
+  on, reboot, and update Kiosk. Every setting goes through the same checks as the `kiosk` command, and anything
+  else Rock sends is ignored. Nothing from Rock is ever run as a command.
+- The computer proves itself with a token it got when it was linked. It's kept in `/etc/kiosk/manager.conf`,
+  readable only by root, and Rock keeps only a hash of it. The Rock address must be `https://`; for a test server on
+  `http://`, add `--allow-http`.
+- While Rock manages a kiosk, the `kiosk` command shows its settings but won't change them (it says to change them in
+  Rock). The screen on/off and restart commands still work.
+- If Rock can't be reached (or something in between, such as a Wi-Fi sign-in page, answers instead of Kiosk
+  Manager), the kiosk carries on with its current settings and tries again each minute. A kiosk made inactive in
+  Rock is paused: it keeps reporting in, but gets no settings or actions until it's active again. If the
+  kiosk is removed in Rock or given a new code, it keeps showing what it shows and stops sending heartbeats;
+  `kiosk status` says so.
+- `sudo kiosk unmanage` stops it: the settings stay as they are and the `kiosk` command can change them again.
 
 ## How it works
 
@@ -99,6 +135,9 @@ goes back), or connect over SSH if you've set it up.
 - Settings are in `/etc/kiosk/kiosk.conf`. After editing it by hand, run `sudo kiosk restart`.
 - **Screen off:** stops the browser and blanks the screen, which sends most TVs and monitors to sleep. A nightly
   restart during the off hours keeps the screen off.
+- **Kiosk's own updates:** `sudo kiosk update` installs the latest release, keeping the settings, and does nothing
+  when the kiosk already has it. A test build installed from a branch (`KIOSK_REF=<branch>`) follows that branch
+  until there's a release. Kiosk remembers where it came from in `/etc/kiosk/installed-from`.
 - **Updates:** Debian, Ubuntu and Raspberry Pi OS get automatic security updates (unattended-upgrades), and Fedora
   gets dnf-automatic. A Flathub browser is updated daily. Arch and openSUSE have no standard automatic updates, so
   update those by hand now and then.
@@ -132,7 +171,7 @@ screen) back on, and leaves the installed packages, such as cage and Chromium, i
 
 ## Developing
 
-- `shellcheck -x kiosk install.sh lib/session lib/start lib/distro.sh` must be clean.
+- `shellcheck -x kiosk install.sh lib/session lib/start lib/distro.sh lib/manage.sh` must be clean.
 - From a copy of this repository, `sudo ./install.sh` installs that copy.
 - To install a branch for testing: `curl -fsSL … | KIOSK_REF=<branch> bash`.
 - The release test is in [TESTING.md](TESTING.md).

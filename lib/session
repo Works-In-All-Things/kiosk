@@ -59,7 +59,7 @@ rotate_screens() {
 wait_for_network() {
     local attempt
     for attempt in $(seq 1 18); do
-        if curl --silent --output /dev/null --max-time 5 "$URL"; then
+        if curl --silent --globoff --output /dev/null --max-time 5 "$URL"; then
             return 0
         fi
         [[ $attempt -lt 18 ]] && sleep 5
