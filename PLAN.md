@@ -1,6 +1,6 @@
 # Kiosk: Plan for Version 1.0
 
-**Status:** first version written; ready for testing on real hardware. See [README.md](README.md) for how it works
+**Status:** the release test passed on Ubuntu 26.04; the other distributions are still to test. See [README.md](README.md) for how it works
 and [TESTING.md](TESTING.md) for the release test.
 
 **What it is:** Works In All Things Kiosk. One command turns a Linux computer into a TV player that opens one web
@@ -18,7 +18,7 @@ just as well for the Parent Page number board, or any page that should fill a sc
 | Browser | The distribution's Chromium where it's a real package with full video support (Debian, Raspberry Pi OS, Mint, Arch). Otherwise Chromium from **Flathub** (Ubuntu's is a snap; Fedora's and openSUSE's can't play H.264 MP4s). |
 | Display | **cage**, packaged by every supported distribution. |
 | In 1.0 | Screen off/on times, rotation, resolution, nightly restart, automatic updates. Network settings are left alone (the computer is already online to download the installer). |
-| Later | SSH set-up during install, HDMI-CEC (turning the TV itself off), showing the IP address on screen. |
+| Later | SSH set-up during install, HDMI-CEC (turning the TV itself off), showing the IP address on screen. Management from Rock: an optional agent for the **Kiosk Manager** plugin (Kiosk 1.1, planned in `Works-In-All-Things/kiosk-manager`). Kiosk never runs Rock check-in. |
 
 ## How it fits together
 
@@ -43,12 +43,13 @@ just as well for the Parent Page number board, or any page that should fill a sc
   Its sudo-rs freezes any program that reads the keyboard unless it's the one sudo started, so `install.sh` hands
   over to the installer with `exec` (or runs sudo itself with the keyboard as input), and the installer never
   reads answers inside `$(...)` or changes terminal settings.
-- Not checked yet: anything on a real screen, Debian, Raspberry Pi OS, Fedora, Arch or openSUSE (their package
+- **Randy ran the whole release test (TESTING.md) on Ubuntu 26.04 (reported 2026-10-19): every step passed.**
+- Not checked yet: Debian, Raspberry Pi OS, Fedora, Arch or openSUSE (their package
   mirrors and Flathub can't be reached from where it was written). That's what TESTING.md is for.
 
 ## Next
 
-1. Randy tests on the Intel mini PCs and the Raspberry Pi 5 (TESTING.md).
+1. Randy tests on the Intel mini PCs and the Raspberry Pi 5 (TESTING.md). Ubuntu 26.04 is done.
 2. Fix what that finds, then tag `v1.0.0` (a GitHub release), which `install.sh` and `kiosk update` download.
 3. Add a `/kiosk/` page to the website with the install command and a copy of `install.sh` at
    `/kiosk/install.sh`, and link it from the Signage and Parent Page pages.
