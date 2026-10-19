@@ -270,7 +270,7 @@ apply_settings() {
 # Prints the last line of a command's output without its colors, for an action's result message.
 plain_text() {
     local text
-    text=$(tail -n 1 <<<"$1" | sed 's/\x1b\[[0-9;]*m//g')
+    text=$(tail -n 1 <<<"$1" | sed 's/\x1b\[[0-9;]*m//g; s/^==> //; s/^Error: //')
     printf '%s' "${text:-No message.}"
 }
 

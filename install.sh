@@ -59,23 +59,34 @@ main() {
     # The download is left in /tmp (it's small, and cleared at the next restart) because the installer below must
     # replace this process with exec: under some versions of sudo (sudo-rs on Ubuntu 25.10 and later), only the
     # process sudo started can read the keyboard when the script arrives through a pipe.
+    # The commit the tag or branch points to, so "kiosk update" can tell later whether anything is newer.
+    local commit
+    commit=$(download "https://api.github.com/repos/$KIOSK_REPO/commits/$ref" 2>/dev/null |
+        sed -n 's/^  "sha": *"\([0-9a-f]\{40\}\)".*/\1/p' | head -n 1 || true)
+
     local dir
     dir=$(mktemp -d)
     echo "Downloading Works In All Things Kiosk ($ref)"
-    # A release tag, or else a branch (branch names such as "feature/x" only work in the long form).
-    download "https://github.com/$KIOSK_REPO/archive/refs/tags/$ref.tar.gz" 2>/dev/null |
-        tar -xz --warning=no-timestamp -C "$dir" --strip-components 1 2>/dev/null ||
-        download "https://github.com/$KIOSK_REPO/archive/refs/heads/$ref.tar.gz" |
-        tar -xz --warning=no-timestamp -C "$dir" --strip-components 1 ||
-        die "Couldn't download Kiosk ($ref)."
+    if [[ -n $commit ]]; then
+        download "https://github.com/$KIOSK_REPO/archive/$commit.tar.gz" |
+            tar -xz --warning=no-timestamp -C "$dir" --strip-components 1 ||
+            die "Couldn't download Kiosk ($ref)."
+    else
+        # A release tag, or else a branch (branch names such as "feature/x" only work in the long form).
+        download "https://github.com/$KIOSK_REPO/archive/refs/tags/$ref.tar.gz" 2>/dev/null |
+            tar -xz --warning=no-timestamp -C "$dir" --strip-components 1 2>/dev/null ||
+            download "https://github.com/$KIOSK_REPO/archive/refs/heads/$ref.tar.gz" |
+            tar -xz --warning=no-timestamp -C "$dir" --strip-components 1 ||
+            die "Couldn't download Kiosk ($ref)."
+    fi
     chmod -R a+rX "$dir"
 
     if [[ ${#run_as_root[@]} -gt 0 ]]; then
         # Not root (run as "curl ... | bash"): sudo asks for the password, reading from the keyboard rather than
         # from the pipe the script arrived on.
-        exec sudo bash "$dir/kiosk" install "$@" </dev/tty
+        exec sudo bash "$dir/kiosk" install --source "$ref" --commit "$commit" "$@" </dev/tty
     fi
-    exec bash "$dir/kiosk" install "$@"
+    exec bash "$dir/kiosk" install --source "$ref" --commit "$commit" "$@"
 }
 
 main "$@"

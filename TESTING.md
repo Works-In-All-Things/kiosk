@@ -44,6 +44,7 @@ Write each result in the tables at the end: ✓, ✗ (with a note), or – for n
 | 4.6 | `sudo kiosk restart-time <in 2 minutes>` | The computer restarts and plays again. |
 | 4.7 | `kiosk status` and `sudo kiosk logs` | The settings, IP address and recent messages. |
 | 4.8 | `sudo kiosk update <branch>` | It updates and restarts the browser; settings are kept. |
+| 4.9 | `sudo kiosk update` straight afterwards. | *Kiosk is up to date*, with nothing downloaded. (Before the first release it follows the branch from 4.8.) |
 
 ## 5. Uninstall
 

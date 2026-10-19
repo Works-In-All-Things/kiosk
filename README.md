@@ -80,7 +80,7 @@ sudo kiosk restart-time 03:30|off   Restart the computer at this time each day
 sudo kiosk restart                  Restart the browser
 kiosk status                        Show what the kiosk is doing
 sudo kiosk logs                     Show recent messages
-sudo kiosk update                   Update Kiosk to the latest release
+sudo kiosk update [branch or tag]    Update Kiosk to the latest release (does nothing if it's up to date)
 sudo kiosk manage <rock address> <code>
                                     Let Rock manage this kiosk (see Managed by Rock)
 sudo kiosk unmanage                 Stop Rock managing this kiosk
@@ -133,6 +133,9 @@ How it works:
 - Settings are in `/etc/kiosk/kiosk.conf`. After editing it by hand, run `sudo kiosk restart`.
 - **Screen off:** stops the browser and blanks the screen, which sends most TVs and monitors to sleep. A nightly
   restart during the off hours keeps the screen off.
+- **Kiosk's own updates:** `sudo kiosk update` installs the latest release, keeping the settings, and does nothing
+  when the kiosk already has it. A test build installed from a branch (`KIOSK_REF=<branch>`) follows that branch
+  until there's a release. Kiosk remembers where it came from in `/etc/kiosk/installed-from`.
 - **Updates:** Debian, Ubuntu and Raspberry Pi OS get automatic security updates (unattended-upgrades), and Fedora
   gets dnf-automatic. A Flathub browser is updated daily. Arch and openSUSE have no standard automatic updates, so
   update those by hand now and then.

@@ -9,6 +9,8 @@ COMMAND_LINK=/usr/local/bin/kiosk
 CONFIG_DIR=/etc/kiosk
 CONFIG=$CONFIG_DIR/kiosk.conf
 STATE=$CONFIG_DIR/install-state
+# Where the installed files came from (a release tag or branch, and its commit), so "kiosk update" knows what's newer.
+SOURCE_FILE=$CONFIG_DIR/installed-from
 KIOSK_USER=kiosk
 KIOSK_HOME=/var/lib/kiosk
 UNIT_DIR=/etc/systemd/system
@@ -262,6 +264,7 @@ cmd_install() {
     local -a packages
     local url="" rotation="" resolution="" resolution_set=no timezone="" screen_off="" screen_on="" restart_time="" browser=auto
     local update=no screen_set=no restart_set=no reboot=no manage_address="" manage_code="" allow_http=no
+    local source_ref="" source_commit=""
     while [[ $# -gt 0 ]]; do
         case $1 in
             --url) url=${2:-}; shift 2 ;;
@@ -278,6 +281,9 @@ cmd_install() {
             --manage) manage_address=${2:-}; shift 2 ;;
             --code) manage_code=${2:-}; shift 2 ;;
             --allow-http) allow_http=yes; shift ;;
+            # Passed by install.sh and "kiosk update": where these files came from.
+            --source) source_ref=${2:-}; shift 2 ;;
+            --commit) source_commit=${2:-}; shift 2 ;;
             *) die "Unknown option: $1 (see: kiosk help)" ;;
         esac
     done
@@ -288,6 +294,7 @@ cmd_install() {
         require_installed
         info "Updating Kiosk to $KIOSK_VERSION on $DISTRO_NAME"
         install_files
+        save_source "$source_ref" "$source_commit"
         enable_units
         systemctl restart kiosk.service || true
         info "Kiosk is updated to $KIOSK_VERSION."
@@ -297,7 +304,7 @@ cmd_install() {
     printf '\n\033[1mWorks In All Things Kiosk %s\033[0m on %s\n\n' "$KIOSK_VERSION" "$DISTRO_NAME"
     if [[ -n $manage_address || -n $manage_code ]]; then
         [[ -n $manage_address && -n $manage_code ]] || die "Use --manage <rock address> --code <code> together (both are on the kiosk's page in Rock)."
-        install_managed "$manage_address" "$manage_code" "$allow_http" "$browser" "$reboot"
+        install_managed "$manage_address" "$manage_code" "$allow_http" "$browser" "$reboot" "$source_ref" "$source_commit"
         return
     fi
     refuse_if_managed settings
@@ -383,6 +390,7 @@ cmd_install() {
     timedatectl set-ntp true 2>/dev/null || true
     create_user
     install_files
+    save_source "$source_ref" "$source_commit"
     write_default_config
     set_setting URL "$url"
     set_setting ROTATION "$rotation"
@@ -412,7 +420,7 @@ cmd_install() {
 # the computer is linked to its kiosk in Rock first thing after the packages are installed, and Rock's settings
 # (the address, time zone, rotation, screen and restart times) are used.
 install_managed() {
-    local address=$1 code=$2 allow_http=$3 browser=$4 reboot=$5 display_manager="" url
+    local address=$1 code=$2 allow_http=$3 browser=$4 reboot=$5 source_ref=$6 source_commit=$7 display_manager="" url
     [[ $address == http://* && $allow_http != yes ]] &&
         die "The Rock address is http://, so this computer's token would cross the network unencrypted. Use https://, or add --allow-http (for a test server)."
     if [[ -L $UNIT_DIR/display-manager.service ]]; then
@@ -439,6 +447,7 @@ install_managed() {
     timedatectl set-ntp true 2>/dev/null || true
     create_user
     install_files
+    save_source "$source_ref" "$source_commit"
     write_default_config
     set_setting BROWSER "$KIOSK_BROWSER"
     manage_enroll "$address" "$code" "$allow_http"
@@ -772,28 +781,80 @@ cmd_logs() {
 
 # Updates -----------------------------------------------------------------------------------------------------
 
-# Downloads a Kiosk release (the latest, or the branch or tag given) and installs its files, keeping the
-# settings.
+# Remembers where the installed files came from: a release tag or branch, and its commit. Nothing is saved for an
+# install from a local copy.
+save_source() {
+    local ref=$1 commit=$2
+    [[ -n $ref ]] || return 0
+    mkdir -p "$CONFIG_DIR"
+    {
+        echo "# Works In All Things Kiosk: where the installed files came from. Written by the installer."
+        printf 'REF=%q\n' "$ref"
+        printf 'COMMIT=%q\n' "$commit"
+    } >"$SOURCE_FILE"
+}
+
+# Prints REF or COMMIT from the installed-from file.
+get_source() {
+    [[ -r $SOURCE_FILE ]] || return 0
+    (
+        # shellcheck source=/dev/null
+        . "$SOURCE_FILE"
+        printf '%s' "${!1:-}"
+    )
+}
+
+# Prints the tag of the latest Kiosk release, or nothing when none has been published.
+latest_release() {
+    curl -fsSL --max-time 20 "https://api.github.com/repos/$KIOSK_REPO/releases/latest" 2>/dev/null |
+        sed -n 's/^ *"tag_name": *"\([^"]*\)".*/\1/p' || true
+}
+
+# Prints the commit a tag or branch points to, or nothing when GitHub can't say.
+ref_commit() {
+    local commit
+    commit=$(curl -fsSL --max-time 20 -H 'Accept: application/vnd.github.sha' \
+        "https://api.github.com/repos/$KIOSK_REPO/commits/$1" 2>/dev/null || true)
+    [[ $commit =~ ^[0-9a-f]{40}$ ]] && printf '%s' "$commit"
+    return 0
+}
+
+# Updates Kiosk, keeping the settings: to the release, branch or tag given, or else to the latest release. Before
+# the first release, a test build follows the branch it was installed from. Nothing is downloaded when the
+# installed files are already that version.
 cmd_update() {
     require_root update
     require_installed
-    local ref=${1:-} dir
+    local ref=${1:-} commit dir url
     if [[ -z $ref ]]; then
-        ref=$(curl -fsSL "https://api.github.com/repos/$KIOSK_REPO/releases/latest" 2>/dev/null |
-            sed -n 's/^ *"tag_name": *"\([^"]*\)".*/\1/p' || true)
-        [[ -n $ref ]] || die "Couldn't find the latest release. Give a branch or tag: sudo kiosk update <name>"
+        ref=$(latest_release)
+        [[ -n $ref ]] || ref=$(get_source REF)
+        [[ -n $ref ]] || die "No Kiosk release has been published yet, and this kiosk doesn't know where it was installed from. Give a branch or tag: sudo kiosk update <name>"
+    fi
+    commit=$(ref_commit "$ref")
+    if [[ -n $commit && $commit == "$(get_source COMMIT)" ]]; then
+        info "Kiosk is up to date ($KIOSK_VERSION from $ref)."
+        return 0
     fi
     dir=$(mktemp -d)
     # shellcheck disable=SC2064 # The folder is known now and must be removed whatever happens later.
     trap "rm -rf '$dir'" EXIT
     info "Downloading Kiosk ($ref)"
-    # A release tag, or else a branch (branch names such as "feature/x" only work in the long form).
-    curl -fsSL "https://github.com/$KIOSK_REPO/archive/refs/tags/$ref.tar.gz" 2>/dev/null |
-        tar -xz --warning=no-timestamp -C "$dir" --strip-components 1 2>/dev/null ||
-        curl -fsSL "https://github.com/$KIOSK_REPO/archive/refs/heads/$ref.tar.gz" |
-        tar -xz --warning=no-timestamp -C "$dir" --strip-components 1 ||
-        die "Couldn't download $ref."
-    bash "$dir/kiosk" install --update
+    if [[ -n $commit ]]; then
+        # The exact commit, so what's installed is what was checked.
+        url="https://github.com/$KIOSK_REPO/archive/$commit.tar.gz"
+        curl -fsSL "$url" | tar -xz --warning=no-timestamp -C "$dir" --strip-components 1 ||
+            die "Couldn't download $ref."
+    else
+        # GitHub's API didn't answer: a release tag, or else a branch (branch names such as "feature/x" only work in
+        # the long form).
+        curl -fsSL "https://github.com/$KIOSK_REPO/archive/refs/tags/$ref.tar.gz" 2>/dev/null |
+            tar -xz --warning=no-timestamp -C "$dir" --strip-components 1 2>/dev/null ||
+            curl -fsSL "https://github.com/$KIOSK_REPO/archive/refs/heads/$ref.tar.gz" |
+            tar -xz --warning=no-timestamp -C "$dir" --strip-components 1 ||
+            die "Couldn't download $ref."
+    fi
+    bash "$dir/kiosk" install --update --source "$ref" --commit "$commit"
 }
 
 # Updates the Flathub browser, when the kiosk uses it. The browser picks it up at its next restart.
@@ -872,7 +933,7 @@ Works In All Things Kiosk $KIOSK_VERSION: shows one web address full screen, fro
   sudo kiosk restart                  Restart the browser
   kiosk status                        Show what the kiosk is doing
   sudo kiosk logs                     Show recent messages
-  sudo kiosk update                   Update Kiosk to the latest release
+  sudo kiosk update [branch or tag]   Update Kiosk to the latest release (or a branch or tag)
   sudo kiosk manage <rock address> <code>
                                       Let Rock manage this kiosk (Kiosk Manager plugin)
   sudo kiosk unmanage                 Stop Rock managing this kiosk

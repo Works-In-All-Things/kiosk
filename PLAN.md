@@ -33,6 +33,7 @@ just as well for the Parent Page number board, or any page that should fill a sc
 | `lib/pam-kiosk` | `/etc/pam.d/kiosk` | The login session, so the kiosk user gets the screen, sound and a session bus. |
 | `systemd/*` | `/etc/systemd/system/` | The kiosk service, the screen, restart and browser-update jobs. The daily timers are written from the settings. |
 | (written) | `/etc/kiosk/kiosk.conf` | The settings. |
+| (written) | `/etc/kiosk/installed-from` | The release tag or branch and the commit the files came from, so `kiosk update` knows when it's up to date. |
 | (written) | `/etc/kiosk/install-state` | What was on before (desktop login, console login), so uninstall can put it back. |
 | (written) | `/etc/kiosk/manager.conf`, `/etc/kiosk/manager-state/` | Only when managed by Rock: the Rock address and token (root only), and the applied settings version, action results and last heartbeat. |
 
