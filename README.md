@@ -24,8 +24,9 @@ Free and open source (MIT license; see *License*).
 
 3. Answer the questions: the **address to show** (paste the Player URL), the **time zone** (pick a number from
    the US list, or type any zone name such as `Europe/London`), screen rotation, when to turn the screen off and
-   on (optional) and when to restart each night (3:30 am unless you change it). Press Enter to keep what's shown
-   in brackets. A mistyped answer is simply asked again.
+   on (optional), when to restart each night (3:30 am unless you change it), and whether to hide the start-up text
+   (yes unless you say no; see *Start-up screen*). Press Enter to keep what's shown in brackets. A mistyped answer
+   is simply asked again.
 4. Restart. From then on the computer shows the address whenever it's turned on.
 
 To install without questions, pass the answers:
@@ -82,6 +83,9 @@ sudo kiosk screen schedule 22:00 06:00
 sudo kiosk screen schedule off      Keep the screen on
 sudo kiosk restart-time 03:30|off   Restart the computer at this time each day
 sudo kiosk restart                  Restart the browser
+sudo kiosk boot quiet|normal        Hide the start-up text, or show it again
+sudo kiosk boot logo <file.png>|default
+                                    Your logo while the computer starts (a file or an https address)
 kiosk status                        Show what the kiosk is doing
 sudo kiosk logs                     Show recent messages
 sudo kiosk update [branch or tag]    Update Kiosk to the latest release (does nothing if it's up to date)
@@ -127,13 +131,43 @@ How it works:
   `kiosk status` says so.
 - `sudo kiosk unmanage` stops it: the settings stay as they are and the `kiosk` command can change them again.
 
+## Start-up screen
+
+While the computer starts, the screen shows a logo on black, and the logo stays up until the page appears. It's the
+Works In All Things logo unless you set your own:
+
+```bash
+sudo kiosk boot logo /home/me/logo.png        # or an https:// address of a PNG image
+sudo kiosk boot logo default                  # back to the Works In All Things logo
+```
+
+Kiosk also hides the start-up text unless you answer no at install (`--quiet-boot no` without questions): no boot
+menu and no scrolling messages. `sudo kiosk boot normal` shows them again (and `sudo kiosk boot quiet` hides them);
+the logo still shows while the browser starts. Each change takes effect at the next restart, and `kiosk status`
+shows which is set. A PNG with a transparent background works well; a logo bigger than half the screen is shrunk to
+fit.
+
+- **How:** quiet kernel options and a hidden boot menu, and a Plymouth start-up screen with Kiosk's theme, left on
+  the screen until the browser takes over. The browser then opens a small start page with the same logo, which
+  opens the address; the browser keeps the logo up until the page has something to show. On Debian, Ubuntu and
+  Mint, Kiosk adds `/etc/default/grub.d/90-kiosk.cfg`; on Fedora it uses `grubby`; on a Raspberry Pi it adds
+  options to `cmdline.txt` and turns off the rainbow square in `config.txt`. It only adds its own settings,
+  remembers them in `/etc/kiosk/boot-state`, and `kiosk boot normal` or `kiosk uninstall` takes off exactly those.
+- **The boot menu** is still there: hold **Shift** (or press **Esc**) as the computer starts.
+- **No blinking cursor:** the text console's cursor is hidden too, including on Ctrl+Alt+F2. Type `setterm --cursor
+  on` there to see it while you work.
+- **Not changed:** the computer maker's logo before Linux starts (that's the firmware; some have a *quiet boot*
+  option in their setup). On Arch and openSUSE without `grubby`, and on computers that ask for a disk password at
+  start-up, Kiosk says so and leaves the start-up text as it is; the logo still shows while the browser starts.
+
 ## How it works
 
 - **cage**, a display server that runs one app full screen with no desktop, starts **Chromium** in kiosk mode on
   the first screen. A systemd service (`kiosk.service`) starts it at boot and again within seconds if it closes.
 - Chromium runs as a `kiosk` user that has no password and can't log in. Its data is kept in `/var/lib/kiosk`, so
   Signage's offline storage survives restarts: a TV that's turned on with no network still plays.
-- At start-up it waits up to 90 seconds for the address to answer, then opens it either way.
+- At start-up it waits up to 90 seconds for the address to answer (with the logo on the screen), then opens it
+  either way.
 - There are no first-run screens, "Restore pages?" bubbles, translate bars or update nags, and videos play with
   sound without a click.
 - Settings are in `/etc/kiosk/kiosk.conf`. After editing it by hand, run `sudo kiosk restart`.
@@ -152,8 +186,9 @@ How it works:
 sudo kiosk uninstall
 ```
 
-It removes Kiosk's files, settings, timers and the `kiosk` user, turns the console login (and any desktop login
-screen) back on, and leaves the installed packages, such as cage and Chromium, in place.
+It removes Kiosk's files, settings, timers and the `kiosk` user, puts the start-up text and screen back as they
+were, turns the console login (and any desktop login screen) back on, and leaves the installed packages, such as
+cage, Chromium and Plymouth, in place.
 
 ## Troubleshooting
 
@@ -192,5 +227,6 @@ screen) back on, and leaves the installed packages, such as cage and Chromium, i
 
 MIT: see [LICENSE](LICENSE). You're welcome to use, change and share Kiosk, including in your own projects.
 
-The license covers the code, not the name. "Works In All Things" and its logo are not licensed for other projects,
-so a changed copy you share must use its own name and its own installer address, not worksinallthings.com.
+The license covers the code, not the name or the logo. "Works In All Things" and its logo (`lib/plymouth/logo.png`)
+are not licensed for other projects, so a changed copy you share must use its own name, logo and installer address,
+not worksinallthings.com. Kiosks running Kiosk itself may show the logo, and each church can replace it with its own.

@@ -26,6 +26,14 @@ FLATPAK_APP=org.chromium.Chromium
 INSTALL_LOG=/var/log/kiosk-install.log
 # Present while the screen has been turned on by hand (or by its on time), so it stays on during the off hours.
 SCREEN_ON_FLAG=/run/kiosk-screen-on
+# The start-up screen: a logo on black while the computer and the browser start. It's the Works In All Things logo
+# unless a church sets its own with "kiosk boot logo". Also the Plymouth theme that shows it, the setting that keeps
+# it on the screen until the browser replaces it, and what Kiosk changed in the boot settings (so "kiosk boot
+# normal" and uninstall take off exactly that).
+CUSTOM_LOGO=$CONFIG_DIR/boot-logo.png
+BOOT_STATE=$CONFIG_DIR/boot-state
+PLYMOUTH_THEME_DIR=/usr/share/plymouth/themes/kiosk
+PLYMOUTH_QUIT_DROPIN=$UNIT_DIR/plymouth-quit.service.d/90-kiosk.conf
 
 SOURCE_DIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
 KIOSK_VERSION=$(cat "$SOURCE_DIR/VERSION" 2>/dev/null || echo unknown)
@@ -188,6 +196,10 @@ SCREEN_ON=''
 # Restart the computer at this time each day (24-hour HH:MM), or leave blank for never.
 RESTART_TIME=03:30
 
+# Hide the start-up text (yes or no): the logo on black until the page appears. Change it with "kiosk boot quiet"
+# or "kiosk boot normal", and the logo with "kiosk boot logo", not here.
+QUIET_BOOT=yes
+
 # The browser: flatpak, or the path of the distribution's Chromium. Set by the installer.
 BROWSER=''
 
@@ -214,6 +226,9 @@ is_time_or_blank() { [[ -z $1 ]] || is_time "$1"; }
 
 # Checks a 24-hour time, or "off" (or blank) for none.
 is_time_or_off() { [[ -z $1 || $1 == off ]] || is_time "$1"; }
+
+# Checks yes or no.
+is_yes_no() { [[ $1 =~ ^(yes|no)$ ]]; }
 
 # Checks a web address.
 is_url() { [[ $1 =~ ^https?://[^[:space:]]+$ ]]; }
@@ -273,7 +288,7 @@ cmd_install() {
     local -a packages
     local url="" rotation="" resolution="" resolution_set=no timezone="" screen_off="" screen_on="" restart_time="" browser=auto
     local update=no screen_set=no restart_set=no reboot=no manage_address="" manage_code="" allow_http=no
-    local source_ref="" source_commit=""
+    local source_ref="" source_commit="" quiet_boot=""
     while [[ $# -gt 0 ]]; do
         case $1 in
             --url) url=${2:-}; shift 2 ;;
@@ -284,6 +299,7 @@ cmd_install() {
             --screen-on) screen_on=${2:-}; screen_set=yes; shift 2 ;;
             --restart-time) restart_time=${2:-}; restart_set=yes; shift 2 ;;
             --browser) browser=${2:-}; shift 2 ;;
+            --quiet-boot) quiet_boot=${2:-}; shift 2 ;;
             --yes | -y) ASSUME_YES=yes; shift ;;
             --update) update=yes; ASSUME_YES=yes; shift ;;
             --reboot) reboot=yes; shift ;;
@@ -298,6 +314,7 @@ cmd_install() {
     done
     require_root install
     check_system
+    [[ -z $quiet_boot ]] || is_yes_no "$quiet_boot" || die "--quiet-boot must be yes or no."
 
     if [[ $update == yes ]]; then
         require_installed
@@ -305,6 +322,7 @@ cmd_install() {
         install_files
         save_source "$source_ref" "$source_commit"
         enable_units
+        apply_boot
         systemctl restart kiosk.service || true
         info "Kiosk is updated to $KIOSK_VERSION."
         return
@@ -313,7 +331,8 @@ cmd_install() {
     printf '\n\033[1mWorks In All Things Kiosk %s\033[0m on %s\n\n' "$KIOSK_VERSION" "$DISTRO_NAME"
     if [[ -n $manage_address || -n $manage_code ]]; then
         [[ -n $manage_address && -n $manage_code ]] || die "Use --manage <rock address> --code <code> together (both are on the kiosk's page in Rock)."
-        install_managed "$manage_address" "$manage_code" "$allow_http" "$browser" "$reboot" "$source_ref" "$source_commit"
+        install_managed "$manage_address" "$manage_code" "$allow_http" "$browser" "$reboot" "$source_ref" "$source_commit" \
+            "$quiet_boot"
         return
     fi
     refuse_if_managed settings
@@ -374,6 +393,16 @@ cmd_install() {
     is_time_or_off "$restart_time" || die "The restart time must be a 24-hour time like 03:30, or 'off'."
     [[ $restart_time == off ]] && restart_time=""
 
+    if [[ -z $quiet_boot ]]; then
+        local default_quiet=y
+        [[ $(get_setting QUIET_BOOT) == no ]] && default_quiet=n
+        if confirm "Hide the start-up text (a logo on black until the page appears)?" "$default_quiet"; then
+            quiet_boot=yes
+        else
+            quiet_boot=no
+        fi
+    fi
+
     local display_manager=""
     if [[ -L $UNIT_DIR/display-manager.service ]]; then
         display_manager=$(readlink -f "$UNIT_DIR/display-manager.service")
@@ -387,6 +416,7 @@ cmd_install() {
     info "Installing packages. This takes a few minutes; the details go to $INSTALL_LOG."
     : >"$INSTALL_LOG"
     quietly pkg_refresh || die "Couldn't refresh the package lists. Check the network and run the installer again."
+    KIOSK_LISTS_REFRESHED=yes
     mapfile -t packages < <(required_packages)
     pkg_install "${packages[@]}"
     mapfile -t packages < <(optional_packages)
@@ -408,6 +438,7 @@ cmd_install() {
     set_setting SCREEN_ON "$screen_on"
     set_setting RESTART_TIME "$restart_time"
     set_setting BROWSER "$KIOSK_BROWSER"
+    set_setting QUIET_BOOT "$quiet_boot"
 
     if [[ -n $display_manager && $display_manager != kiosk.service ]]; then
         remember DISPLAY_MANAGER "$display_manager"
@@ -415,6 +446,7 @@ cmd_install() {
     fi
     remember GETTY_TTY1 "$(systemctl is-enabled getty@tty1.service 2>/dev/null || echo enabled)"
     enable_units
+    apply_boot
 
     printf '\n\033[1mKiosk is installed.\033[0m It shows %s full screen whenever this computer starts.\n' "$url"
     echo "Change it later with: ${SUDO_HINT}kiosk url <address>   (more: kiosk help)"
@@ -429,7 +461,8 @@ cmd_install() {
 # the computer is linked to its kiosk in Rock first thing after the packages are installed, and Rock's settings
 # (the address, time zone, rotation, screen and restart times) are used.
 install_managed() {
-    local address=$1 code=$2 allow_http=$3 browser=$4 reboot=$5 source_ref=$6 source_commit=$7 display_manager="" url
+    local address=$1 code=$2 allow_http=$3 browser=$4 reboot=$5 source_ref=$6 source_commit=$7 quiet_boot=${8:-}
+    local display_manager="" url
     [[ $address == http://* && $allow_http != yes ]] &&
         die "The Rock address is http://, so this computer's token would cross the network unencrypted. Use https://, or add --allow-http (for a test server)."
     if [[ -L $UNIT_DIR/display-manager.service ]]; then
@@ -444,6 +477,7 @@ install_managed() {
     info "Installing packages. This takes a few minutes; the details go to $INSTALL_LOG."
     : >"$INSTALL_LOG"
     quietly pkg_refresh || die "Couldn't refresh the package lists. Check the network and run the installer again."
+    KIOSK_LISTS_REFRESHED=yes
     local -a packages
     mapfile -t packages < <(required_packages)
     pkg_install "${packages[@]}"
@@ -459,6 +493,9 @@ install_managed() {
     save_source "$source_ref" "$source_commit"
     write_default_config
     set_setting BROWSER "$KIOSK_BROWSER"
+    # No questions here: the start-up text is hidden unless --quiet-boot no was given.
+    [[ -n $quiet_boot ]] || quiet_boot=$(get_setting QUIET_BOOT)
+    set_setting QUIET_BOOT "${quiet_boot:-yes}"
     manage_enroll "$address" "$code" "$allow_http"
     send_heartbeat no-restart || die "Linked to Rock, but couldn't get the kiosk's settings: $(rock_message). Run: ${SUDO_HINT}kiosk heartbeat"
     url=$(get_setting URL)
@@ -470,6 +507,7 @@ install_managed() {
     fi
     remember GETTY_TTY1 "$(systemctl is-enabled getty@tty1.service 2>/dev/null || echo enabled)"
     enable_units
+    apply_boot
 
     printf '\n\033[1mKiosk is installed and managed by Rock.\033[0m It shows %s full screen whenever this computer starts.\n' "$url"
     echo "Change its settings on its page in Rock."
@@ -757,6 +795,218 @@ screen_schedule_text() {
     fi
 }
 
+# Start-up screen ---------------------------------------------------------------------------------------------
+
+# Prints a value Kiosk keeps about the boot settings it changed.
+boot_state() { CONFIG=$BOOT_STATE get_setting "$1"; }
+
+# Saves a value about the boot settings Kiosk changed, so they can be taken off again.
+set_boot_state() { CONFIG=$BOOT_STATE set_setting "$1" "$2"; }
+
+# Hides or shows the start-up text to match the QUIET_BOOT setting. Changes only what isn't right yet, so it's safe
+# to run again (the installer and "kiosk update" do).
+apply_boot() {
+    if [[ $(get_setting QUIET_BOOT) == yes ]]; then
+        boot_quiet_on
+    else
+        boot_quiet_off
+    fi
+}
+
+# Hides the start-up text: kernel options and a hidden boot menu, and the start-up screen (black, or the logo).
+boot_quiet_on() {
+    local method
+    method=$(boot_method)
+    if [[ -z $method ]]; then
+        warn "Kiosk can't hide the start-up text on this computer yet: it doesn't know its boot loader. It starts as before."
+        return 0
+    fi
+    info "Hiding the start-up text"
+    set_boot_state METHOD "$method"
+    install_boot_theme
+    boot_args_add "$method"
+}
+
+# Shows the start-up text again: takes off what boot_quiet_on added. Does nothing if Kiosk never changed it.
+boot_quiet_off() {
+    local method
+    method=$(boot_state METHOD)
+    [[ -n $method ]] || return 0
+    info "Showing the start-up text again"
+    boot_args_remove "$method"
+    remove_boot_theme
+    set_boot_state METHOD ""
+}
+
+# True when the computer asks for a disk password at start-up. Kiosk's start-up screen can't show that question,
+# so it's left to the distribution's own.
+has_encrypted_disk() { grep -qsvE '^[[:space:]]*(#|$)' /etc/crypttab; }
+
+# Prints the logo shown at start-up: the church's own, or the Works In All Things logo.
+logo_file() {
+    if [[ -f $CUSTOM_LOGO ]]; then
+        printf '%s' "$CUSTOM_LOGO"
+    else
+        printf '%s' "$INSTALL_DIR/lib/plymouth/logo.png"
+    fi
+}
+
+# Puts Kiosk's start-up screen in place: Plymouth with Kiosk's theme and the logo, left on the screen until the
+# browser replaces it. Rebuilds the start-up image only when something changed.
+install_boot_theme() {
+    local -a packages
+    local changed=no file
+    mapfile -t packages < <(plymouth_packages)
+    if [[ ${#packages[@]} -eq 0 ]]; then
+        warn "Kiosk can't show a start-up screen on $DISTRO_NAME yet, so the screen stays black with a cursor."
+        return 0
+    fi
+    if has_encrypted_disk; then
+        warn "This computer asks for a disk password at start-up, so its own start-up screen is kept."
+        return 0
+    fi
+    if ! command -v plymouthd >/dev/null 2>&1; then
+        [[ ${KIOSK_LISTS_REFRESHED:-no} == yes ]] || quietly pkg_refresh || true
+        pkg_install_optional "${packages[@]}"
+        command -v plymouthd >/dev/null 2>&1 || { warn "Couldn't install Plymouth, so there's no start-up screen."; return 0; }
+        changed=yes
+    fi
+    # Some distributions package Plymouth's script module with the themes.
+    if ! plymouth_has_script_module && [[ $DISTRO_FAMILY == apt ]]; then
+        pkg_install_optional plymouth-themes
+    fi
+    if ! plymouth_has_script_module; then
+        warn "Plymouth's script module isn't installed, so the distribution's own start-up screen is kept."
+        return 0
+    fi
+
+    mkdir -p "$PLYMOUTH_THEME_DIR"
+    for file in kiosk.plymouth kiosk.script; do
+        if ! cmp -s "$INSTALL_DIR/lib/plymouth/$file" "$PLYMOUTH_THEME_DIR/$file"; then
+            install -m 644 "$INSTALL_DIR/lib/plymouth/$file" "$PLYMOUTH_THEME_DIR/$file"
+            changed=yes
+        fi
+    done
+    if ! cmp -s "$(logo_file)" "$PLYMOUTH_THEME_DIR/logo.png"; then
+        install -m 644 "$(logo_file)" "$PLYMOUTH_THEME_DIR/logo.png"
+        changed=yes
+    fi
+    keep_splash_on_quit
+
+    if [[ $(plymouth_current_theme) != kiosk ]]; then
+        [[ $(boot_state THEME) == yes ]] || set_boot_state THEME_BEFORE "$(plymouth_current_theme)"
+        plymouth_use_kiosk_theme "$PLYMOUTH_THEME_DIR"
+        changed=yes
+    fi
+    set_boot_state THEME yes
+    if [[ $changed == yes ]]; then
+        info "Updating the start-up image (this can take a minute)"
+        quietly rebuild_initramfs || warn "Couldn't rebuild the start-up image, so the new start-up screen may not show yet."
+    fi
+}
+
+# Leaves the start-up screen's last picture (the logo) on the screen when Plymouth ends, until the kiosk's browser
+# replaces it, instead of a black screen in between.
+keep_splash_on_quit() {
+    local plymouth content
+    plymouth=$(command -v plymouth || echo /usr/bin/plymouth)
+    content=$(printf '%s\n' "# Works In All Things Kiosk: leave the start-up logo up until the kiosk's browser replaces it." \
+        "[Service]" "ExecStart=" "ExecStart=-$plymouth quit --retain-splash")
+    if [[ ! -f $PLYMOUTH_QUIT_DROPIN || $(cat "$PLYMOUTH_QUIT_DROPIN") != "$content" ]]; then
+        mkdir -p "${PLYMOUTH_QUIT_DROPIN%/*}"
+        printf '%s\n' "$content" >"$PLYMOUTH_QUIT_DROPIN"
+        systemctl daemon-reload
+    fi
+}
+
+# Takes Kiosk's start-up screen off, and puts back the one that was there before.
+remove_boot_theme() {
+    [[ $(boot_state THEME) == yes ]] || return 0
+    plymouth_restore_theme "$(boot_state THEME_BEFORE)" "$PLYMOUTH_THEME_DIR"
+    rm -rf "$PLYMOUTH_THEME_DIR"
+    if [[ -f $PLYMOUTH_QUIT_DROPIN ]]; then
+        rm -f "$PLYMOUTH_QUIT_DROPIN"
+        rmdir "${PLYMOUTH_QUIT_DROPIN%/*}" 2>/dev/null || true
+        systemctl daemon-reload
+    fi
+    set_boot_state THEME ""
+    info "Updating the start-up image (this can take a minute)"
+    quietly rebuild_initramfs || warn "Couldn't rebuild the start-up image."
+}
+
+# Saves the logo for the start-up screen: a PNG file, or an https:// address to download one from.
+set_boot_logo() {
+    local source=$1 file
+    file=$(mktemp)
+    if [[ $source =~ ^https?:// ]]; then
+        curl -fsSL --proto '=https,http' --max-time 60 --max-filesize 10485760 -o "$file" "$source" ||
+            { rm -f "$file"; die "Couldn't download the logo from $source."; }
+    else
+        [[ -f $source ]] || { rm -f "$file"; die "There's no file $source."; }
+        cp "$source" "$file"
+    fi
+    if [[ $(head -c 8 "$file" | od -An -tx1 | tr -d ' \n') != 89504e470d0a1a0a ]]; then
+        rm -f "$file"
+        die "The logo must be a PNG image."
+    fi
+    if [[ $(stat -c %s "$file") -gt 10485760 ]]; then
+        rm -f "$file"
+        die "The logo must be smaller than 10 MB."
+    fi
+    mkdir -p "$CONFIG_DIR"
+    install -m 644 "$file" "$CUSTOM_LOGO"
+    rm -f "$file"
+}
+
+# Describes the start-up screen.
+boot_status_text() {
+    local logo="the Works In All Things logo"
+    [[ -f $CUSTOM_LOGO ]] && logo="your logo"
+    if [[ $(get_setting QUIET_BOOT) != yes ]]; then
+        echo "start-up text shown, then $logo while the browser starts"
+    elif [[ -z $(boot_state METHOD) ]]; then
+        echo "$logo while the browser starts (the start-up text can't be hidden on this computer)"
+    else
+        echo "quiet, with $logo"
+    fi
+}
+
+# Hides the start-up text ("quiet": the logo on black until the page appears), shows it again ("normal"), or sets
+# the logo ("logo <file or address>", or "logo default" for the Works In All Things logo).
+cmd_boot() {
+    case ${1:-} in
+        "")
+            boot_status_text
+            ;;
+        quiet | normal)
+            require_root boot
+            require_installed
+            check_system
+            if [[ $1 == quiet ]]; then
+                set_setting QUIET_BOOT yes
+            else
+                set_setting QUIET_BOOT no
+            fi
+            apply_boot
+            info "Start-up: $(boot_status_text). It takes effect at the next restart."
+            ;;
+        logo)
+            require_root boot
+            require_installed
+            check_system
+            [[ -n ${2:-} ]] || die "Use: kiosk boot logo <file.png or https address>, or: kiosk boot logo default"
+            if [[ $2 == default ]]; then
+                rm -f "$CUSTOM_LOGO"
+            else
+                set_boot_logo "$2"
+            fi
+            apply_boot
+            info "Start-up: $(boot_status_text). It takes effect at the next restart."
+            ;;
+        *) die "Use: kiosk boot quiet|normal, or: kiosk boot logo <file.png or https address>|default" ;;
+    esac
+}
+
 # Status ------------------------------------------------------------------------------------------------------
 
 # Shows what the kiosk is doing.
@@ -775,6 +1025,7 @@ cmd_status() {
     resolution=$(get_setting RESOLUTION)
     printf '  %-18s %s\n' "Resolution:" "${resolution:-auto}"
     printf '  %-18s %s\n' "Nightly restart:" "${restart_time:-off}"
+    printf '  %-18s %s\n' "Start-up:" "$(boot_status_text)"
     printf '  %-18s %s\n' "Time zone:" "$(timedatectl show --property=Timezone --value 2>/dev/null || echo unknown)"
     printf '  %-18s %s\n' "Host name:" "$(hostname)"
     printf '  %-18s %s\n' "IP addresses:" "${addresses:-none}"
@@ -895,6 +1146,7 @@ cmd_uninstall() {
     done
     systemctl daemon-reload
     blank_screen 0
+    boot_quiet_off
 
     display_manager=$(recall DISPLAY_MANAGER)
     getty=$(recall GETTY_TTY1)
@@ -947,6 +1199,8 @@ cmd_help() {
     help_line "${s}kiosk screen schedule off" "Keep the screen on"
     help_line "${s}kiosk restart-time HH:MM|off" "Restart the computer at this time each day"
     help_line "${s}kiosk restart" "Restart the browser"
+    help_line "${s}kiosk boot quiet|normal" "Hide the start-up text, or show it again"
+    help_line "${s}kiosk boot logo <file.png>|default" "Your logo at start-up (or an https address); default: ours"
     help_line "kiosk status" "Show what the kiosk is doing"
     help_line "${s}kiosk logs" "Show recent messages"
     help_line "${s}kiosk update [branch or tag]" "Update Kiosk to the latest release (or a branch or tag)"
@@ -961,6 +1215,7 @@ Install options (for installing without questions):
   --rotation 0|90|180|270             --resolution 1920x1080|auto
   --screen-off HH:MM --screen-on HH:MM
   --restart-time HH:MM|off            --browser auto|native|flatpak
+  --quiet-boot yes|no (hide the start-up text; yes unless you say no)
   --yes (no questions)                --reboot (restart when done)
   --manage <rock address> --code <code>
                                       Managed by Rock: its settings come from the kiosk's page in Rock
@@ -975,6 +1230,7 @@ EOF
 is_locking_command() {
     case $1 in
         install | rotate | resolution | restart-time | restart | update | uninstall | manage | unmanage) return 0 ;;
+        boot) [[ -n ${2:-} ]] ;;
         url) [[ -n ${2:-} ]] ;;
         screen) [[ ${2:-} != check ]] ;;
         *) return 1 ;;
@@ -995,6 +1251,7 @@ main() {
         screen) cmd_screen "$@" ;;
         restart-time) cmd_restart_time "$@" ;;
         restart) cmd_restart ;;
+        boot) cmd_boot "$@" ;;
         status) cmd_status ;;
         logs) cmd_logs "$@" ;;
         update) cmd_update "$@" ;;
