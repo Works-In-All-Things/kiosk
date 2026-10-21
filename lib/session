@@ -63,22 +63,6 @@ set_resolution() {
     done
 }
 
-# Checks the resolution again 5, 15, 35 and 65 seconds after the browser starts, and sets it again on any screen
-# that went back to its own: some virtual screens (such as Proxmox's) do after a change. Runs in the background.
-keep_resolution() {
-    local delay output
-    for delay in 5 10 20 30; do
-        sleep "$delay"
-        for output in $(screen_names); do
-            [[ $(current_mode "$output") == "${RESOLUTION%@*}" ]] && continue
-            echo "$output is at $(current_mode "$output"), not $RESOLUTION; setting it again." >&2
-            wlr-randr --output "$output" --mode "$RESOLUTION" 2>/dev/null ||
-                wlr-randr --output "$output" --custom-mode "$RESOLUTION" ||
-                echo "Couldn't set $output to $RESOLUTION again." >&2
-        done
-    done
-}
-
 # Turns every screen to the configured rotation. Needs wlr-randr and a cage that supports it (0.2 or later).
 rotate_screens() {
     [[ $ROTATION != 0 && ${KIOSK_ROTATED_BY_CAGE:-no} == no ]] || return 0
@@ -119,9 +103,6 @@ clear_crash_flag() {
 if ! command -v wlr-randr >/dev/null 2>&1 || wait_for_screens; then
     set_resolution
     rotate_screens
-    if [[ -n $RESOLUTION ]] && command -v wlr-randr >/dev/null 2>&1; then
-        keep_resolution &
-    fi
 fi
 wait_for_network
 
