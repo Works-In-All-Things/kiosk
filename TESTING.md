@@ -14,6 +14,7 @@ Write each result in the tables at the end: ✓, ✗ (with a note), or – for n
 | 1.3 | Restart. | The address fills the screen within a minute of power-on: no login, desktop, bars, bubbles or pop-ups. No mouse pointer (unless a mouse is plugged in). |
 | 1.4 | On a computer with a desktop installed, run the installer. | It asks to turn the desktop off. After the restart the kiosk shows instead of the login screen. |
 | 1.5 | Run the installer again and press Enter at every question. | Nothing changes; the kiosk still works. |
+| 1.6 | **Debian with a root password set** (no sudo or curl): run `wget -qO- https://worksinallthings.com/kiosk/install.sh \| bash` as your user. Then `su` (plain, without `-`) and run it again. Afterwards, as your user, `kiosk url https://example.org`. | As your user: *sudo isn't installed … Become root with: su -*. As root it installs as in 1.1, with no *command not found* errors (plain `su` leaves `/usr/sbin` off the PATH; Kiosk adds it). The `kiosk` command says *Run this as root: su -*. |
 
 ## 2. Playing
 
@@ -86,7 +87,7 @@ Fill in one column per computer and distribution (for example *N100 mini PC, Deb
 | Hardware | | | | |
 | Distribution and version | | | | |
 | Browser (`kiosk status`) | | | | |
-| 1.1–1.5 Install | | | | |
+| 1.1–1.6 Install | | | | |
 | 2.1–2.2 Playing (note CPU for 2.2) | | | | |
 | 2.3 Signage offline | | | | |
 | 3.1–3.3 Recovery | | | | |

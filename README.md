@@ -18,6 +18,10 @@ Free and open source (MIT license).
    It asks for your password (with sudo). No curl? Use `wget -qO- https://worksinallthings.com/kiosk/install.sh | bash`.
    `… | sudo bash` works too.
 
+   **No sudo?** Debian leaves out sudo (and curl) when you set a root password during installation. Become root
+   with `su -` (it asks for the root password), then run the `wget` command above. As root, leave `sudo` off every
+   `kiosk` command below.
+
 3. Answer the questions: the **address to show** (paste the Player URL), the **time zone** (pick a number from
    the US list, or type any zone name such as `Europe/London`), screen rotation, when to turn the screen off and
    on (optional) and when to restart each night (3:30 am unless you change it). Press Enter to keep what's shown
@@ -153,6 +157,9 @@ screen) back on, and leaves the installed packages, such as cage and Chromium, i
 
 ## Troubleshooting
 
+- **"sudo: command not found":** Debian doesn't install sudo when a root password is set during installation. Run
+  `su -` to become root, then run the command without `sudo`. To use sudo instead, install it as root with
+  `apt install sudo`, add yourself with `usermod -aG sudo yourname`, and log in again.
 - **Black screen:** run `kiosk status` and `sudo kiosk logs`. Check the address opens in a normal browser.
 - **Changing Wi-Fi:** use the distribution's own tool, such as `sudo nmtui` where NetworkManager is installed
   (Raspberry Pi OS, Fedora and most desktops) or `sudo raspi-config` on a Raspberry Pi. Kiosk leaves the network

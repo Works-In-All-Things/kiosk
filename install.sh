@@ -36,9 +36,15 @@ download() {
 }
 
 main() {
+    # The installer needs admin tools such as useradd from /usr/sbin, which Debian leaves off the PATH after a plain
+    # "su" (without "-"). The Kiosk 1.0.0 release doesn't add them itself, so they're added here for it.
+    export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
+
     local -a run_as_root=()
     if [[ $EUID -ne 0 ]]; then
-        command -v sudo >/dev/null 2>&1 || die "Run this as root, or install sudo first."
+        # Debian leaves sudo out when a root password is set during installation.
+        command -v sudo >/dev/null 2>&1 ||
+            die "sudo isn't installed (Debian leaves it out when a root password is set). Become root with: su -   then run the same command again."
         run_as_root=(sudo)
     fi
 
