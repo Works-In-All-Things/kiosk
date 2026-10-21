@@ -5,6 +5,10 @@ set -euo pipefail
 
 # Admin tools such as useradd live in /usr/sbin, which Debian leaves off the PATH after a plain "su" (without "-").
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
+# Put before "kiosk" in the commands messages suggest: "sudo " where sudo is installed. Debian leaves sudo out when a
+# root password is set; there, people run the commands as root.
+SUDO_HINT="sudo "
+command -v sudo >/dev/null 2>&1 || SUDO_HINT=""
 
 KIOSK_REPO=Works-In-All-Things/kiosk
 INSTALL_DIR=/usr/local/lib/kiosk
@@ -247,7 +251,7 @@ require_root() {
 
 # Stops unless Kiosk is installed.
 require_installed() {
-    [[ -e $UNIT_DIR/kiosk.service ]] || die "Kiosk isn't installed. Install it with: sudo kiosk install"
+    [[ -e $UNIT_DIR/kiosk.service ]] || die "Kiosk isn't installed. Install it with: ${SUDO_HINT}kiosk install"
 }
 
 # Stops on computers Kiosk can't run on.
@@ -413,7 +417,7 @@ cmd_install() {
     enable_units
 
     printf '\n\033[1mKiosk is installed.\033[0m It shows %s full screen whenever this computer starts.\n' "$url"
-    echo "Change it later with: sudo kiosk url <address>   (more: kiosk help)"
+    echo "Change it later with: ${SUDO_HINT}kiosk url <address>   (more: kiosk help)"
     if [[ $reboot == yes ]] || { can_ask && confirm "Restart now to start it?" y; }; then
         systemctl reboot
     else
@@ -456,9 +460,9 @@ install_managed() {
     write_default_config
     set_setting BROWSER "$KIOSK_BROWSER"
     manage_enroll "$address" "$code" "$allow_http"
-    send_heartbeat no-restart || die "Linked to Rock, but couldn't get the kiosk's settings: $(rock_message). Run: sudo kiosk heartbeat"
+    send_heartbeat no-restart || die "Linked to Rock, but couldn't get the kiosk's settings: $(rock_message). Run: ${SUDO_HINT}kiosk heartbeat"
     url=$(get_setting URL)
-    [[ -n $url ]] || die "Rock didn't send an address to show. Set one on the kiosk's page in Rock, then run: sudo kiosk heartbeat"
+    [[ -n $url ]] || die "Rock didn't send an address to show. Set one on the kiosk's page in Rock, then run: ${SUDO_HINT}kiosk heartbeat"
 
     if [[ -n $display_manager && $display_manager != kiosk.service ]]; then
         remember DISPLAY_MANAGER "$display_manager"
@@ -674,7 +678,7 @@ cmd_screen() {
             touch "$SCREEN_OFF_FLAG"
             systemctl stop kiosk.service
             blank_screen 4
-            info "The screen is off. Turn it on with: sudo kiosk screen on"
+            info "The screen is off. Turn it on with: ${SUDO_HINT}kiosk screen on"
             ;;
         on)
             require_root screen
@@ -776,7 +780,7 @@ cmd_status() {
     printf '  %-18s %s\n' "IP addresses:" "${addresses:-none}"
     manage_status
     echo
-    echo "Recent messages: sudo kiosk logs"
+    echo "Recent messages: ${SUDO_HINT}kiosk logs"
 }
 
 # Shows the kiosk's recent log messages.
@@ -834,7 +838,7 @@ cmd_update() {
     if [[ -z $ref ]]; then
         ref=$(latest_release)
         [[ -n $ref ]] || ref=$(get_source REF)
-        [[ -n $ref ]] || die "No Kiosk release has been published yet, and this kiosk doesn't know where it was installed from. Give a branch or tag: sudo kiosk update <name>"
+        [[ -n $ref ]] || die "No Kiosk release has been published yet, and this kiosk doesn't know where it was installed from. Give a branch or tag: ${SUDO_HINT}kiosk update <name>"
     fi
     commit=$(ref_commit "$ref")
     if [[ -n $commit && $commit == "$(get_source COMMIT)" ]]; then
@@ -919,30 +923,38 @@ cmd_uninstall() {
 
 # Help --------------------------------------------------------------------------------------------------------
 
+# Prints one command and what it does, in two columns; a long command puts its description on the next line.
+help_line() {
+    if [[ ${#1} -gt 35 ]]; then
+        printf '  %s\n  %-35s %s\n' "$1" "" "$2"
+    else
+        printf '  %-35s %s\n' "$1" "$2"
+    fi
+}
+
 # Shows the commands.
 cmd_help() {
+    local s=$SUDO_HINT
+    echo "Works In All Things Kiosk $KIOSK_VERSION: shows one web address full screen, from power-on."
+    echo
+    help_line "${s}kiosk install" "Install, or change the settings (asks questions)"
+    help_line "kiosk url" "Show the address"
+    help_line "${s}kiosk url <address>" "Show a different address"
+    help_line "${s}kiosk rotate 0|90|180|270" "Turn the picture for portrait or upside-down screens"
+    help_line "${s}kiosk resolution 1920x1080|auto" "Set the screen resolution (auto: the screen's own best)"
+    help_line "${s}kiosk screen off|on" "Turn the screen off or on now"
+    help_line "${s}kiosk screen schedule HH:MM HH:MM" "Turn the screen off and on at these times each day"
+    help_line "${s}kiosk screen schedule off" "Keep the screen on"
+    help_line "${s}kiosk restart-time HH:MM|off" "Restart the computer at this time each day"
+    help_line "${s}kiosk restart" "Restart the browser"
+    help_line "kiosk status" "Show what the kiosk is doing"
+    help_line "${s}kiosk logs" "Show recent messages"
+    help_line "${s}kiosk update [branch or tag]" "Update Kiosk to the latest release (or a branch or tag)"
+    help_line "${s}kiosk manage <rock address> <code>" "Let Rock manage this kiosk (Kiosk Manager plugin)"
+    help_line "${s}kiosk unmanage" "Stop Rock managing this kiosk"
+    help_line "${s}kiosk uninstall" "Remove Kiosk"
+    [[ -n $s ]] || echo "  (This computer has no sudo: run the commands as root, after su -.)"
     cat <<EOF
-Works In All Things Kiosk $KIOSK_VERSION: shows one web address full screen, from power-on.
-
-  sudo kiosk install                  Install, or change the settings (asks questions)
-  kiosk url                           Show the address
-  sudo kiosk url <address>            Show a different address
-  sudo kiosk rotate 0|90|180|270      Turn the picture for portrait or upside-down screens
-  sudo kiosk resolution 1920x1080|auto
-                                      Set the screen resolution (auto: the screen's own best)
-  sudo kiosk screen off|on            Turn the screen off or on now
-  sudo kiosk screen schedule HH:MM HH:MM
-                                      Turn the screen off and on at these times each day
-  sudo kiosk screen schedule off      Keep the screen on
-  sudo kiosk restart-time HH:MM|off   Restart the computer at this time each day
-  sudo kiosk restart                  Restart the browser
-  kiosk status                        Show what the kiosk is doing
-  sudo kiosk logs                     Show recent messages
-  sudo kiosk update [branch or tag]   Update Kiosk to the latest release (or a branch or tag)
-  sudo kiosk manage <rock address> <code>
-                                      Let Rock manage this kiosk (Kiosk Manager plugin)
-  sudo kiosk unmanage                 Stop Rock managing this kiosk
-  sudo kiosk uninstall                Remove Kiosk
 
 Install options (for installing without questions):
   --url <address>                     --timezone <central, America/Chicago...>

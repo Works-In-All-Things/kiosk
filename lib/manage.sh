@@ -47,7 +47,7 @@ is_managed() {
 # Stops with a message when a setting is managed by Rock, so it's changed there instead.
 refuse_if_managed() {
     is_managed || return 0
-    die "This kiosk is managed by Rock ($(get_manager ROCK_ADDRESS)). Change its $1 on the kiosk's page in Rock, or stop managing it with: sudo kiosk unmanage"
+    die "This kiosk is managed by Rock ($(get_manager ROCK_ADDRESS)). Change its $1 on the kiosk's page in Rock, or stop managing it with: ${SUDO_HINT}kiosk unmanage"
 }
 
 # Prints a file from the managed state folder, or nothing.
@@ -370,7 +370,7 @@ send_heartbeat() {
         401)
             set_state revoked "$(rock_message)"
             echo "Rock says this computer is no longer linked to a kiosk: $(rock_message)" >&2
-            echo "It keeps showing what it shows. To link it again: sudo kiosk manage <rock address> <new code>" >&2
+            echo "It keeps showing what it shows. To link it again: ${SUDO_HINT}kiosk manage <rock address> <new code>" >&2
             systemctl disable --now kiosk-heartbeat.timer >/dev/null 2>&1 || true
             return 1
             ;;
@@ -456,12 +456,12 @@ cmd_manage() {
             --allow-http) allow_http=yes; shift ;;
             -*) die "Unknown option: $1 (see: kiosk help)" ;;
             *)
-                if [[ -z $address ]]; then address=$1; elif [[ -z $code ]]; then code=$1; else die "Use: sudo kiosk manage <rock address> <code>"; fi
+                if [[ -z $address ]]; then address=$1; elif [[ -z $code ]]; then code=$1; else die "Use: ${SUDO_HINT}kiosk manage <rock address> <code>"; fi
                 shift
                 ;;
         esac
     done
-    [[ -n $address && -n $code ]] || die "Use: sudo kiosk manage <rock address> <code> (both are on the kiosk's page in Rock)"
+    [[ -n $address && -n $code ]] || die "Use: ${SUDO_HINT}kiosk manage <rock address> <code> (both are on the kiosk's page in Rock)"
     require_root manage
     require_installed
     take_lock || die "Another kiosk command is running. Try again in a minute."
