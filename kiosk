@@ -3,6 +3,9 @@
 # Signage Player URL. Run "kiosk help" for the commands.
 set -euo pipefail
 
+# Admin tools such as useradd live in /usr/sbin, which Debian leaves off the PATH after a plain "su" (without "-").
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
+
 KIOSK_REPO=Works-In-All-Things/kiosk
 INSTALL_DIR=/usr/local/lib/kiosk
 COMMAND_LINK=/usr/local/bin/kiosk
