@@ -12,8 +12,8 @@ Fixes for Debian when a root password is set during installation, which leaves o
 - The resolution and rotation are set reliably at start-up. Kiosk now waits up to 10 seconds for the screens to be
   listed, checks the resolution took effect (trying up to 5 times), and checks again in the first minute after the
   browser starts, setting it again on a screen that went back to its own. Before, a screen listed late or reset
-  after the change (as on Debian in a Proxmox virtual machine) kept its own resolution with no message. The log
-  now says what was set.
+  after the change kept its own resolution with no message. The log now says what was set, and on a virtual machine
+  suggests giving its display more memory (Proxmox's default display memory is too small for 1920×1080).
 - The repository no longer includes internal notes.
 
 ## 1.0.0

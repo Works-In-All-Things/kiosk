@@ -59,7 +59,7 @@ set_resolution() {
             fi
             sleep 1
         done
-        echo "Couldn't set $output to $RESOLUTION (it's $(current_mode "$output")). This version of cage may not support it." >&2
+        echo "Couldn't set $output to $RESOLUTION (it's $(current_mode "$output")). On a virtual machine, give its display more memory; otherwise this version of cage may not support it." >&2
     done
 }
 
@@ -71,7 +71,7 @@ keep_resolution() {
         sleep "$delay"
         for output in $(screen_names); do
             [[ $(current_mode "$output") == "${RESOLUTION%@*}" ]] && continue
-            echo "$output went back to $(current_mode "$output"); setting $RESOLUTION again." >&2
+            echo "$output is at $(current_mode "$output"), not $RESOLUTION; setting it again." >&2
             wlr-randr --output "$output" --mode "$RESOLUTION" 2>/dev/null ||
                 wlr-randr --output "$output" --custom-mode "$RESOLUTION" ||
                 echo "Couldn't set $output to $RESOLUTION again." >&2
