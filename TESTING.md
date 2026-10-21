@@ -113,4 +113,4 @@ Fill in one column per computer and distribution (for example *N100 mini PC, Deb
 | 5.1–5.2 Uninstall | ✓ | ✓ | | |
 | 6.1 A week untouched | ✓ | Running since 2026-10-21 | | |
 | 7.1–7.11 Managed by Rock | ✓ | ✓ | | |
-| 8.1–8.10 Start-up screen (1.1.0) | | | | |
+| 8.1–8.10 Start-up screen | ✓ (1.1.0) | ✓ (1.1.0) | | |

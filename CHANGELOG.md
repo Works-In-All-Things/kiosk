@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.1.0 (not released yet)
+## 1.1.0
 
 - **A start-up logo.** While the computer starts, the screen shows the Works In All Things logo on black, and it
   stays up until the page appears (the browser opens a small start page with the logo, then the address). Set your
