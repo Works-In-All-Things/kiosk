@@ -84,7 +84,7 @@ On a virtual machine, watch the start-up in its console. Check each after a rest
 
 | # | Do this | You should see |
 |---|---|---|
-| 8.1 | A fresh install, pressing Enter at *Hide the start-up text?* Restart. | No boot menu and no scrolling text. After the computer maker's logo, the Works In All Things logo on black, staying up until the page appears (at most a moment of black as the browser starts). `kiosk status` says *Start-up: quiet, with the Works In All Things logo*. |
+| 8.1 | A fresh install, pressing Enter at *Hide the start-up text?* Restart. | No boot menu and no scrolling text. After the computer maker's logo, the Works In All Things logo on black, staying up until the page appears (at most a moment of black as the browser starts). No blinking cursor at any point. `kiosk status` says *Start-up: quiet, with the Works In All Things logo*. |
 | 8.2 | `sudo kiosk boot logo <a PNG file or https address>`. Restart. | Your logo instead, the same way. *Start-up: quiet, with your logo*. |
 | 8.3 | `sudo kiosk boot logo <a text file>` | Refused: *The logo must be a PNG image*. Nothing changes. |
 | 8.4 | `sudo kiosk boot logo default`. Restart. | The Works In All Things logo again. |

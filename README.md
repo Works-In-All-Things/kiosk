@@ -154,6 +154,8 @@ fit.
   options to `cmdline.txt` and turns off the rainbow square in `config.txt`. It only adds its own settings,
   remembers them in `/etc/kiosk/boot-state`, and `kiosk boot normal` or `kiosk uninstall` takes off exactly those.
 - **The boot menu** is still there: hold **Shift** (or press **Esc**) as the computer starts.
+- **No blinking cursor:** the text console's cursor is hidden too, including on Ctrl+Alt+F2. Type `setterm --cursor
+  on` there to see it while you work.
 - **Not changed:** the computer maker's logo before Linux starts (that's the firmware; some have a *quiet boot*
   option in their setup). On Arch and openSUSE without `grubby`, and on computers that ask for a disk password at
   start-up, Kiosk says so and leaves the start-up text as it is; the logo still shows while the browser starts.

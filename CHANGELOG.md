@@ -5,7 +5,7 @@
 - **A start-up logo.** While the computer starts, the screen shows the Works In All Things logo on black, and it
   stays up until the page appears (the browser opens a small start page with the logo, then the address). Set your
   own with `kiosk boot logo <file.png or https address>`; `kiosk boot logo default` puts ours back.
-- **A quiet start-up, on by default.** No boot menu and no scrolling text. The installer asks (yes unless you say
+- **A quiet start-up, on by default.** No boot menu, no scrolling text and no blinking cursor. The installer asks (yes unless you say
   no; `--quiet-boot yes|no` without questions), and a managed install is quiet. `kiosk boot normal` shows the text
   again, and `kiosk uninstall` puts the start-up back as it was. Works on Debian, Ubuntu and Mint (GRUB), Fedora
   (grubby) and Raspberry Pi OS; `kiosk status` shows it. Kiosks updated from 1.0 keep their start-up text until you

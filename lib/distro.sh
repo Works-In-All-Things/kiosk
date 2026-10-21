@@ -160,9 +160,10 @@ enable_automatic_updates() {
 # the kiosk's logo) with Plymouth until the browser starts. How depends on the boot loader. Everything added is
 # remembered in the boot state (boot_state, set_boot_state in the kiosk command), so it can be taken off again.
 
-# The kernel options for a quiet start: no messages, a splash screen, and the splash screen on the display even
-# when there's a serial console (as on a Raspberry Pi).
-KIOSK_BOOT_ARGS="quiet splash loglevel=3 systemd.show_status=false rd.systemd.show_status=false udev.log_level=3 rd.udev.log_level=3 plymouth.ignore-serial-consoles"
+# The kernel options for a quiet start: no messages, no blinking text cursor, a splash screen, and the splash
+# screen on the display even when there's a serial console (as on a Raspberry Pi). Hiding the cursor also hides it
+# on the text consoles (Ctrl+Alt+F2); "setterm --cursor on" shows it there.
+KIOSK_BOOT_ARGS="quiet splash loglevel=3 systemd.show_status=false rd.systemd.show_status=false udev.log_level=3 rd.udev.log_level=3 vt.global_cursor_default=0 plymouth.ignore-serial-consoles"
 # The GRUB settings file Kiosk adds on Debian, Ubuntu and Mint.
 GRUB_DROPIN=/etc/default/grub.d/90-kiosk.cfg
 # Marks the lines Kiosk adds to a Raspberry Pi's config.txt.
