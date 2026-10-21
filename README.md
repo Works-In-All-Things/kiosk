@@ -178,6 +178,7 @@ screen) back on, and leaves the installed packages, such as cage and Chromium, i
 
 ## Developing
 
+- What changed in each version: [CHANGELOG.md](CHANGELOG.md).
 - `shellcheck -x kiosk install.sh lib/session lib/start lib/distro.sh lib/manage.sh` must be clean.
 - From a copy of this repository, `sudo ./install.sh` installs that copy.
 - To install a branch for testing: `curl -fsSL … | KIOSK_REF=<branch> bash`.
