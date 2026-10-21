@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Works In All Things Kiosk
+Description=A black screen, with the kiosk's logo in the middle when it has one, until the browser starts.
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/kiosk
+ScriptFile=/usr/share/plymouth/themes/kiosk/kiosk.script

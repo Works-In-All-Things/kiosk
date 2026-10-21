@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.0 (not released yet)
+
+- **A quiet start-up, on by default.** No boot menu and no scrolling text: a black screen until the browser starts,
+  or your logo in the middle of it (`kiosk boot logo <file.png or https address>`). The installer asks (yes unless
+  you say no; `--quiet-boot yes|no` without questions), and a managed install is quiet. `kiosk boot normal` shows
+  the start-up text again, and `kiosk uninstall` puts the start-up back as it was. Works on Debian, Ubuntu and Mint
+  (GRUB), Fedora (grubby) and Raspberry Pi OS; `kiosk status` shows it. Kiosks updated from 1.0 keep their
+  start-up until you run `kiosk boot quiet`.
+
 ## 1.0.1
 
 Fixes for Debian when a root password is set during installation, which leaves out sudo and curl.

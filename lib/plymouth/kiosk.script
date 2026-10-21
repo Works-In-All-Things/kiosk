@@ -1,0 +1,16 @@
+// Works In All Things Kiosk start-up screen: black, with logo.png in the middle when there is one ("kiosk boot
+// logo" puts it here). A logo bigger than half the screen is shrunk to fit.
+Window.SetBackgroundTopColor(0, 0, 0);
+Window.SetBackgroundBottomColor(0, 0, 0);
+
+logo.image = Image("logo.png");
+if (logo.image) {
+    screen_width = Window.GetWidth();
+    screen_height = Window.GetHeight();
+    scale = Math.Min(screen_width * 0.5 / logo.image.GetWidth(), screen_height * 0.5 / logo.image.GetHeight());
+    if (scale < 1)
+        logo.image = logo.image.Scale(Math.Int(logo.image.GetWidth() * scale), Math.Int(logo.image.GetHeight() * scale));
+    logo.sprite = Sprite(logo.image);
+    logo.sprite.SetX(Window.GetX() + Math.Int((screen_width - logo.image.GetWidth()) / 2));
+    logo.sprite.SetY(Window.GetY() + Math.Int((screen_height - logo.image.GetHeight()) / 2));
+}

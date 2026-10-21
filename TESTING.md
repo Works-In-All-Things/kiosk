@@ -9,7 +9,7 @@ Write each result in the tables at the end: ✓, ✗ (with a note), or – for n
 
 | # | Do this | You should see |
 |---|---|---|
-| 1.1 | On a fresh install of the distribution, connected to the network, run `curl -fsSL https://worksinallthings.com/kiosk/install.sh \| KIOSK_REF=<branch> bash` (leave out `KIOSK_REF` once there's a release). | It asks for the address, time zone (from a numbered list), rotation, screen times and restart time, then shows one line per step (the details go to `/var/log/kiosk-install.log`) and offers to restart. A mistyped answer is asked again. |
+| 1.1 | On a fresh install of the distribution, connected to the network, run `curl -fsSL https://worksinallthings.com/kiosk/install.sh \| KIOSK_REF=<branch> bash` (leave out `KIOSK_REF` once there's a release). | It asks for the address, time zone (from a numbered list), rotation, screen times and restart time, and whether to hide the start-up text (yes), then shows one line per step (the details go to `/var/log/kiosk-install.log`) and offers to restart. A mistyped answer is asked again. |
 | 1.2 | On a computer connected by Wi-Fi, install and restart. | It's still on the same Wi-Fi after the restart (Kiosk doesn't change network settings). |
 | 1.3 | Restart. | The address fills the screen within a minute of power-on: no login, desktop, bars, bubbles or pop-ups. No mouse pointer (unless a mouse is plugged in). |
 | 1.4 | On a computer with a desktop installed, run the installer. | It asks to turn the desktop off. After the restart the kiosk shows instead of the login screen. |
@@ -78,6 +78,22 @@ Needs the Kiosk Manager plugin on the Rock dev site (its TESTING.md has the Rock
 | 7.10 | `sudo kiosk unmanage`, then `sudo kiosk url https://example.org`. | The settings stay; the address change now works. |
 | 7.11 | Link it again, then `sudo kiosk uninstall`. | `/etc/kiosk` is gone, including the token, and `kiosk-heartbeat.timer` no longer exists. |
 
+## 8. Start-up screen
+
+On a virtual machine, watch the start-up in its console. Check each after a restart.
+
+| # | Do this | You should see |
+|---|---|---|
+| 8.1 | A fresh install, pressing Enter at *Hide the start-up text?* Restart. | No boot menu and no scrolling text: a black screen from the end of the computer maker's logo until the browser starts. `kiosk status` says *Start-up: quiet (black)*. |
+| 8.2 | `sudo kiosk boot logo <a PNG file or https address>`. Restart. | The logo in the middle of a black screen, then the browser. *Start-up: quiet, with a logo*. |
+| 8.3 | `sudo kiosk boot logo <a text file>` | Refused: *The logo must be a PNG image*. Nothing changes. |
+| 8.4 | `sudo kiosk boot logo none`. Restart. | Black again, with no logo. |
+| 8.5 | Restart holding **Shift** (or pressing **Esc**) as it starts. | The boot menu appears. Choose the first entry: it starts as normal. |
+| 8.6 | `sudo kiosk boot normal`. Restart. | The start-up is as it was before Kiosk (the boot menu on Debian, the distribution's own start-up screen or text). *Start-up: normal*. |
+| 8.7 | `sudo kiosk boot quiet`, run it again, then restart. | Quiet again; the second run changes nothing (no *Updating the start-up image*). |
+| 8.8 | `sudo kiosk uninstall`, then restart. | The start-up is as it was before Kiosk. `/etc/default/grub.d/90-kiosk.cfg` (Debian, Ubuntu) and `/usr/share/plymouth/themes/kiosk` are gone; on a Raspberry Pi, `cmdline.txt` is as it was and `config.txt` has no Kiosk lines. |
+| 8.9 | Install without questions with `--quiet-boot no`, and a managed install (7.1). | The first starts with the text shown (*Start-up: normal*); the managed one is quiet. |
+
 ## Results
 
 Fill in one column per computer and distribution (for example *N100 mini PC, Debian 13*).
@@ -96,3 +112,4 @@ Fill in one column per computer and distribution (for example *N100 mini PC, Deb
 | 5.1–5.2 Uninstall | ✓ | ✓ | | |
 | 6.1 A week untouched | ✓ | Running since 2026-10-21 | | |
 | 7.1–7.11 Managed by Rock | ✓ | ✓ | | |
+| 8.1–8.9 Start-up screen (1.1.0) | | | | |

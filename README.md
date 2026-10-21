@@ -24,8 +24,9 @@ Free and open source (MIT license; see *License*).
 
 3. Answer the questions: the **address to show** (paste the Player URL), the **time zone** (pick a number from
    the US list, or type any zone name such as `Europe/London`), screen rotation, when to turn the screen off and
-   on (optional) and when to restart each night (3:30 am unless you change it). Press Enter to keep what's shown
-   in brackets. A mistyped answer is simply asked again.
+   on (optional), when to restart each night (3:30 am unless you change it), and whether to hide the start-up text
+   (yes unless you say no; see *Start-up screen*). Press Enter to keep what's shown in brackets. A mistyped answer
+   is simply asked again.
 4. Restart. From then on the computer shows the address whenever it's turned on.
 
 To install without questions, pass the answers:
@@ -82,6 +83,9 @@ sudo kiosk screen schedule 22:00 06:00
 sudo kiosk screen schedule off      Keep the screen on
 sudo kiosk restart-time 03:30|off   Restart the computer at this time each day
 sudo kiosk restart                  Restart the browser
+sudo kiosk boot quiet|normal        Hide the start-up text, or show it again
+sudo kiosk boot logo <file.png>|none
+                                    Show a logo while the computer starts (a file or an https address)
 kiosk status                        Show what the kiosk is doing
 sudo kiosk logs                     Show recent messages
 sudo kiosk update [branch or tag]    Update Kiosk to the latest release (does nothing if it's up to date)
@@ -127,6 +131,31 @@ How it works:
   `kiosk status` says so.
 - `sudo kiosk unmanage` stops it: the settings stay as they are and the `kiosk` command can change them again.
 
+## Start-up screen
+
+Kiosk hides the start-up text unless you answer no at install (`--quiet-boot no` without questions): no boot menu
+and no scrolling messages, just a black screen until the browser starts. To show your logo in the middle of that
+screen instead:
+
+```bash
+sudo kiosk boot logo /home/me/logo.png        # or an https:// address of a PNG image
+sudo kiosk boot logo none                     # back to black
+sudo kiosk boot normal                        # show the start-up text again (sudo kiosk boot quiet hides it)
+```
+
+Each takes effect at the next restart. A transparent PNG works well; a logo bigger than half the screen is shrunk
+to fit. `kiosk status` shows which is set.
+
+- **How:** quiet kernel options and a hidden boot menu, and a Plymouth start-up screen with Kiosk's theme. On
+  Debian, Ubuntu and Mint, Kiosk adds `/etc/default/grub.d/90-kiosk.cfg`; on Fedora it uses `grubby`; on a
+  Raspberry Pi it adds options to `cmdline.txt` and turns off the rainbow square in `config.txt`. It only adds its
+  own settings, remembers them in `/etc/kiosk/boot-state`, and `kiosk boot normal` or `kiosk uninstall` takes off
+  exactly those.
+- **The boot menu** is still there: hold **Shift** (or press **Esc**) as the computer starts.
+- **Not changed:** the computer maker's logo before Linux starts (that's the firmware; some have a *quiet boot*
+  option in their setup). On Arch and openSUSE without `grubby`, and on computers that ask for a disk password at
+  start-up, Kiosk says so and leaves the start-up as it is.
+
 ## How it works
 
 - **cage**, a display server that runs one app full screen with no desktop, starts **Chromium** in kiosk mode on
@@ -152,8 +181,9 @@ How it works:
 sudo kiosk uninstall
 ```
 
-It removes Kiosk's files, settings, timers and the `kiosk` user, turns the console login (and any desktop login
-screen) back on, and leaves the installed packages, such as cage and Chromium, in place.
+It removes Kiosk's files, settings, timers and the `kiosk` user, puts the start-up text and screen back as they
+were, turns the console login (and any desktop login screen) back on, and leaves the installed packages, such as
+cage, Chromium and Plymouth, in place.
 
 ## Troubleshooting
 
