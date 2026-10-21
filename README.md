@@ -4,7 +4,7 @@ Turns a Linux computer into a TV player for one web address, such as a
 [Signage](https://worksinallthings.com/plugins/signage/) Player URL or a Parent Page number board. It starts on
 power-up, fills the screen, recovers on its own, and needs no keyboard or mouse once it's set up.
 
-Free and open source (MIT license).
+Free and open source (MIT license; see *License*).
 
 ## Install
 
@@ -187,3 +187,10 @@ screen) back on, and leaves the installed packages, such as cage and Chromium, i
 - From a copy of this repository, `sudo ./install.sh` installs that copy.
 - To install a branch for testing: `curl -fsSL … | KIOSK_REF=<branch> bash`.
 - The release test is in [TESTING.md](TESTING.md).
+
+## License
+
+MIT: see [LICENSE](LICENSE). You're welcome to use, change and share Kiosk, including in your own projects.
+
+The license covers the code, not the name. "Works In All Things" and its logo are not licensed for other projects,
+so a changed copy you share must use its own name and its own installer address, not worksinallthings.com.
