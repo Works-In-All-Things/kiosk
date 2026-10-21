@@ -174,7 +174,11 @@ screen) back on, and leaves the installed packages, such as cage and Chromium, i
   the display group's *Fill the screen* setting fills the screen instead, cutting off the edges.
 - **The install stopped with an error:** the end of `/var/log/kiosk-install.log` is shown; the whole log has more.
 - **Rotation or resolution doesn't work:** these need cage 0.2 or later (rotation also works on cage older than
-  0.1.5). Check with `cage -v`, and see `sudo kiosk logs`.
+  0.1.5). Check with `cage -v`, and see `sudo kiosk logs`: when a screen won't take the resolution, it says
+  *Couldn't set … (it's …)*.
+- **A virtual machine won't take the resolution**, and the log (`sudo kiosk logs`) shows *Atomic commit failed:
+  Cannot allocate memory*: its virtual display has too little memory. In Proxmox, open the VM's **Hardware ▸
+  Display**, set **Memory** to 64 MiB (32 at least for 1920×1080), then shut the VM down and start it again.
 
 ## Developing
 

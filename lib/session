@@ -23,19 +23,43 @@ screen_names() {
     wlr-randr 2>/dev/null | awk '/^[^ ]/ { print $1 }'
 }
 
+# Waits up to 10 seconds for cage to list the screens. Right after cage starts they may not be listed yet, and
+# setting the resolution or rotation then would do nothing.
+wait_for_screens() {
+    local attempt
+    for attempt in $(seq 1 20); do
+        [[ -n $(screen_names) ]] && return 0
+        sleep 0.5
+    done
+    echo "No screens were listed after 10 seconds, so the resolution and rotation can't be set." >&2
+    return 1
+}
+
+# Prints a screen's current mode, such as 1920x1080.
+current_mode() {
+    wlr-randr 2>/dev/null | awk -v name="$1" '/^[^ ]/ { inside = ($1 == name) } inside && /current/ { print $1; exit }'
+}
+
 # Sets every screen to the configured resolution: one the screen offers, or else a custom one (which virtual
-# machines accept). Needs wlr-randr and cage 0.2 or later.
+# machines accept). Each screen is checked afterwards and tried up to 5 times. Needs wlr-randr and cage 0.2 or later.
 set_resolution() {
     [[ -n $RESOLUTION ]] || return 0
     if ! command -v wlr-randr >/dev/null 2>&1; then
         echo "A resolution is set but wlr-randr isn't installed." >&2
         return 0
     fi
-    local output
+    local output attempt
     for output in $(screen_names); do
-        wlr-randr --output "$output" --mode "$RESOLUTION" 2>/dev/null ||
-            wlr-randr --output "$output" --custom-mode "$RESOLUTION" ||
-            echo "Couldn't set $output to $RESOLUTION. This version of cage may not support it." >&2
+        for attempt in 1 2 3 4 5; do
+            wlr-randr --output "$output" --mode "$RESOLUTION" 2>/dev/null ||
+                wlr-randr --output "$output" --custom-mode "$RESOLUTION" 2>/dev/null
+            if [[ $(current_mode "$output") == "${RESOLUTION%@*}" ]]; then
+                echo "Set $output to $RESOLUTION." >&2
+                continue 2
+            fi
+            sleep 1
+        done
+        echo "Couldn't set $output to $RESOLUTION (it's $(current_mode "$output")). On a virtual machine, give its display more memory; otherwise this version of cage may not support it." >&2
     done
 }
 
@@ -75,8 +99,11 @@ clear_crash_flag() {
         "$preferences"
 }
 
-set_resolution
-rotate_screens
+# Without wlr-randr, set_resolution and rotate_screens just say it's missing.
+if ! command -v wlr-randr >/dev/null 2>&1 || wait_for_screens; then
+    set_resolution
+    rotate_screens
+fi
 wait_for_network
 
 # shellcheck disable=SC2054 # The commas separate Chromium feature names, not array items.
