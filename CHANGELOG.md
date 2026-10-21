@@ -9,6 +9,9 @@ Fixes for Debian when a root password is set during installation, which leaves o
 - Without sudo, the installer and the `kiosk` command say to become root with `su -`, and their hints and
   `kiosk help` show `kiosk …` instead of `sudo kiosk …`.
 - README and TESTING (step 1.6) cover it.
+- The resolution and rotation are set reliably at start-up. Kiosk now waits up to 10 seconds for the screens to be
+  listed and checks the resolution took effect, trying up to 5 times. Before, a screen listed late (as on Debian
+  in a Proxmox virtual machine) kept its own resolution with no message.
 - The repository no longer includes internal notes.
 
 ## 1.0.0

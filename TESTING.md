@@ -38,7 +38,7 @@ Write each result in the tables at the end: ✓, ✗ (with a note), or – for n
 |---|---|---|
 | 4.1 | `sudo kiosk url <another address>` | It switches within a few seconds. `kiosk url` shows the new address. |
 | 4.2 | `sudo kiosk rotate 90`, then `sudo kiosk rotate 0` | The picture turns for a portrait screen, then back. Note the cage version (`cage -v`) if it doesn't. |
-| 4.2a | `sudo kiosk resolution 1920x1080`, then `sudo kiosk resolution auto` | The picture changes to 1920×1080 (no black bars on a 16:9 slide), then back. On a virtual machine, note the display type (for example Proxmox *Default* or *VirtIO-GPU*). |
+| 4.2a | `sudo kiosk resolution 1920x1080`, then `sudo kiosk resolution auto` | The picture changes to 1920×1080 (no black bars on a 16:9 slide), then back. Set 1920×1080 again and restart the computer: it starts at 1920×1080. On a virtual machine, note the display type (for example Proxmox *Default* or *VirtIO-GPU*). |
 | 4.3 | `sudo kiosk screen schedule <in 2 minutes> <in 4 minutes>` | The screen goes off (the TV says *no signal* or sleeps) and comes back on at the times. |
 | 4.4 | `sudo kiosk screen off`, then `sudo kiosk screen on` | Off, then on. |
 | 4.5 | Set the screen to be off now, then `sudo reboot`. | It stays off after the restart, and comes on at the on time. |
