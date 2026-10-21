@@ -84,14 +84,15 @@ Fill in one column per computer and distribution (for example *N100 mini PC, Deb
 
 | Test | | | | |
 |---|---|---|---|---|
-| Hardware | | | | |
-| Distribution and version | | | | |
-| Browser (`kiosk status`) | | | | |
-| 1.1–1.6 Install | | | | |
-| 2.1–2.2 Playing (note CPU for 2.2) | | | | |
-| 2.3 Signage offline | | | | |
-| 3.1–3.3 Recovery | | | | |
-| 4.1–4.8 Settings | | | | |
-| 5.1–5.2 Uninstall | | | | |
-| 6.1 A week untouched | | | | |
-| 7.1–7.11 Managed by Rock | | | | |
+| Hardware | Not noted | Proxmox virtual machine (display memory 32 MiB) | | |
+| Distribution and version | Ubuntu 26.04 | Debian 13 (trixie) | | |
+| Browser (`kiosk status`) | Chromium (Flathub) | Debian's Chromium | | |
+| Kiosk version | 1.0.0 | 1.0.1 | | |
+| 1.1–1.6 Install | ✓ (1.6 is for Debian) | ✓ | | |
+| 2.1–2.2 Playing (note CPU for 2.2) | ✓ | ✓ | | |
+| 2.3 Signage offline | ✓ | ✓ | | |
+| 3.1–3.3 Recovery | ✓ | ✓ | | |
+| 4.1–4.8 Settings | ✓ | ✓ | | |
+| 5.1–5.2 Uninstall | ✓ | ✓ | | |
+| 6.1 A week untouched | ✓ | Running since 2026-10-21 | | |
+| 7.1–7.11 Managed by Rock | ✓ | ✓ | | |
