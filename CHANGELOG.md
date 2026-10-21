@@ -10,8 +10,10 @@ Fixes for Debian when a root password is set during installation, which leaves o
   `kiosk help` show `kiosk …` instead of `sudo kiosk …`.
 - README and TESTING (step 1.6) cover it.
 - The resolution and rotation are set reliably at start-up. Kiosk now waits up to 10 seconds for the screens to be
-  listed and checks the resolution took effect, trying up to 5 times. Before, a screen listed late (as on Debian
-  in a Proxmox virtual machine) kept its own resolution with no message.
+  listed, checks the resolution took effect (trying up to 5 times), and checks again in the first minute after the
+  browser starts, setting it again on a screen that went back to its own. Before, a screen listed late or reset
+  after the change (as on Debian in a Proxmox virtual machine) kept its own resolution with no message. The log
+  now says what was set.
 - The repository no longer includes internal notes.
 
 ## 1.0.0

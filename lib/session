@@ -53,10 +53,29 @@ set_resolution() {
         for attempt in 1 2 3 4 5; do
             wlr-randr --output "$output" --mode "$RESOLUTION" 2>/dev/null ||
                 wlr-randr --output "$output" --custom-mode "$RESOLUTION" 2>/dev/null
-            [[ $(current_mode "$output") == "${RESOLUTION%@*}" ]] && continue 2
+            if [[ $(current_mode "$output") == "${RESOLUTION%@*}" ]]; then
+                echo "Set $output to $RESOLUTION." >&2
+                continue 2
+            fi
             sleep 1
         done
         echo "Couldn't set $output to $RESOLUTION (it's $(current_mode "$output")). This version of cage may not support it." >&2
+    done
+}
+
+# Checks the resolution again 5, 15, 35 and 65 seconds after the browser starts, and sets it again on any screen
+# that went back to its own: some virtual screens (such as Proxmox's) do after a change. Runs in the background.
+keep_resolution() {
+    local delay output
+    for delay in 5 10 20 30; do
+        sleep "$delay"
+        for output in $(screen_names); do
+            [[ $(current_mode "$output") == "${RESOLUTION%@*}" ]] && continue
+            echo "$output went back to $(current_mode "$output"); setting $RESOLUTION again." >&2
+            wlr-randr --output "$output" --mode "$RESOLUTION" 2>/dev/null ||
+                wlr-randr --output "$output" --custom-mode "$RESOLUTION" ||
+                echo "Couldn't set $output to $RESOLUTION again." >&2
+        done
     done
 }
 
@@ -100,6 +119,9 @@ clear_crash_flag() {
 if ! command -v wlr-randr >/dev/null 2>&1 || wait_for_screens; then
     set_resolution
     rotate_screens
+    if [[ -n $RESOLUTION ]] && command -v wlr-randr >/dev/null 2>&1; then
+        keep_resolution &
+    fi
 fi
 wait_for_network
 
