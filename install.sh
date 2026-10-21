@@ -38,7 +38,9 @@ download() {
 main() {
     local -a run_as_root=()
     if [[ $EUID -ne 0 ]]; then
-        command -v sudo >/dev/null 2>&1 || die "Run this as root, or install sudo first."
+        # Debian leaves sudo out when a root password is set during installation.
+        command -v sudo >/dev/null 2>&1 ||
+            die "sudo isn't installed (Debian leaves it out when a root password is set). Become root with: su -   then run the same command again."
         run_as_root=(sudo)
     fi
 

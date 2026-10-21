@@ -235,9 +235,11 @@ recall() {
 
 # Checks ------------------------------------------------------------------------------------------------------
 
-# Stops unless running as root.
+# Stops unless running as root. Without sudo (Debian leaves it out when a root password is set), says to use su.
 require_root() {
-    [[ $EUID -eq 0 ]] || die "Run this with sudo: sudo kiosk $*"
+    [[ $EUID -eq 0 ]] && return
+    command -v sudo >/dev/null 2>&1 || die "Run this as root: su -   then: kiosk $*"
+    die "Run this with sudo: sudo kiosk $*"
 }
 
 # Stops unless Kiosk is installed.
