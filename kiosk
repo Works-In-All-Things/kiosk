@@ -26,11 +26,14 @@ FLATPAK_APP=org.chromium.Chromium
 INSTALL_LOG=/var/log/kiosk-install.log
 # Present while the screen has been turned on by hand (or by its on time), so it stays on during the off hours.
 SCREEN_ON_FLAG=/run/kiosk-screen-on
-# The start-up screen: the logo shown while the computer starts, the Plymouth theme that shows it, and what Kiosk
-# changed in the boot settings (so "kiosk boot normal" and uninstall take off exactly that).
-BOOT_LOGO=$CONFIG_DIR/boot-logo.png
+# The start-up screen: a logo on black while the computer and the browser start. It's the Works In All Things logo
+# unless a church sets its own with "kiosk boot logo". Also the Plymouth theme that shows it, the setting that keeps
+# it on the screen until the browser replaces it, and what Kiosk changed in the boot settings (so "kiosk boot
+# normal" and uninstall take off exactly that).
+CUSTOM_LOGO=$CONFIG_DIR/boot-logo.png
 BOOT_STATE=$CONFIG_DIR/boot-state
 PLYMOUTH_THEME_DIR=/usr/share/plymouth/themes/kiosk
+PLYMOUTH_QUIT_DROPIN=$UNIT_DIR/plymouth-quit.service.d/90-kiosk.conf
 
 SOURCE_DIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
 KIOSK_VERSION=$(cat "$SOURCE_DIR/VERSION" 2>/dev/null || echo unknown)
@@ -193,8 +196,8 @@ SCREEN_ON=''
 # Restart the computer at this time each day (24-hour HH:MM), or leave blank for never.
 RESTART_TIME=03:30
 
-# Hide the start-up text (yes or no): a black screen, or the logo, until the browser starts. Change it with
-# "kiosk boot quiet" or "kiosk boot normal", not here.
+# Hide the start-up text (yes or no): the logo on black until the page appears. Change it with "kiosk boot quiet"
+# or "kiosk boot normal", and the logo with "kiosk boot logo", not here.
 QUIET_BOOT=yes
 
 # The browser: flatpak, or the path of the distribution's Chromium. Set by the installer.
@@ -393,7 +396,7 @@ cmd_install() {
     if [[ -z $quiet_boot ]]; then
         local default_quiet=y
         [[ $(get_setting QUIET_BOOT) == no ]] && default_quiet=n
-        if confirm "Hide the start-up text (a black screen, or your logo, until the browser starts)?" "$default_quiet"; then
+        if confirm "Hide the start-up text (a logo on black until the page appears)?" "$default_quiet"; then
             quiet_boot=yes
         else
             quiet_boot=no
@@ -839,8 +842,17 @@ boot_quiet_off() {
 # so it's left to the distribution's own.
 has_encrypted_disk() { grep -qsvE '^[[:space:]]*(#|$)' /etc/crypttab; }
 
-# Puts Kiosk's start-up screen in place: Plymouth with Kiosk's theme, and the logo if there is one. Rebuilds the
-# start-up image only when something changed.
+# Prints the logo shown at start-up: the church's own, or the Works In All Things logo.
+logo_file() {
+    if [[ -f $CUSTOM_LOGO ]]; then
+        printf '%s' "$CUSTOM_LOGO"
+    else
+        printf '%s' "$INSTALL_DIR/lib/plymouth/logo.png"
+    fi
+}
+
+# Puts Kiosk's start-up screen in place: Plymouth with Kiosk's theme and the logo, left on the screen until the
+# browser replaces it. Rebuilds the start-up image only when something changed.
 install_boot_theme() {
     local -a packages
     local changed=no file
@@ -875,15 +887,11 @@ install_boot_theme() {
             changed=yes
         fi
     done
-    if [[ -f $BOOT_LOGO ]]; then
-        if ! cmp -s "$BOOT_LOGO" "$PLYMOUTH_THEME_DIR/logo.png"; then
-            install -m 644 "$BOOT_LOGO" "$PLYMOUTH_THEME_DIR/logo.png"
-            changed=yes
-        fi
-    elif [[ -e $PLYMOUTH_THEME_DIR/logo.png ]]; then
-        rm -f "$PLYMOUTH_THEME_DIR/logo.png"
+    if ! cmp -s "$(logo_file)" "$PLYMOUTH_THEME_DIR/logo.png"; then
+        install -m 644 "$(logo_file)" "$PLYMOUTH_THEME_DIR/logo.png"
         changed=yes
     fi
+    keep_splash_on_quit
 
     if [[ $(plymouth_current_theme) != kiosk ]]; then
         [[ $(boot_state THEME) == yes ]] || set_boot_state THEME_BEFORE "$(plymouth_current_theme)"
@@ -897,11 +905,30 @@ install_boot_theme() {
     fi
 }
 
+# Leaves the start-up screen's last picture (the logo) on the screen when Plymouth ends, until the kiosk's browser
+# replaces it, instead of a black screen in between.
+keep_splash_on_quit() {
+    local plymouth content
+    plymouth=$(command -v plymouth || echo /usr/bin/plymouth)
+    content=$(printf '%s\n' "# Works In All Things Kiosk: leave the start-up logo up until the kiosk's browser replaces it." \
+        "[Service]" "ExecStart=" "ExecStart=-$plymouth quit --retain-splash")
+    if [[ ! -f $PLYMOUTH_QUIT_DROPIN || $(cat "$PLYMOUTH_QUIT_DROPIN") != "$content" ]]; then
+        mkdir -p "${PLYMOUTH_QUIT_DROPIN%/*}"
+        printf '%s\n' "$content" >"$PLYMOUTH_QUIT_DROPIN"
+        systemctl daemon-reload
+    fi
+}
+
 # Takes Kiosk's start-up screen off, and puts back the one that was there before.
 remove_boot_theme() {
     [[ $(boot_state THEME) == yes ]] || return 0
     plymouth_restore_theme "$(boot_state THEME_BEFORE)" "$PLYMOUTH_THEME_DIR"
     rm -rf "$PLYMOUTH_THEME_DIR"
+    if [[ -f $PLYMOUTH_QUIT_DROPIN ]]; then
+        rm -f "$PLYMOUTH_QUIT_DROPIN"
+        rmdir "${PLYMOUTH_QUIT_DROPIN%/*}" 2>/dev/null || true
+        systemctl daemon-reload
+    fi
     set_boot_state THEME ""
     info "Updating the start-up image (this can take a minute)"
     quietly rebuild_initramfs || warn "Couldn't rebuild the start-up image."
@@ -927,25 +954,25 @@ set_boot_logo() {
         die "The logo must be smaller than 10 MB."
     fi
     mkdir -p "$CONFIG_DIR"
-    install -m 644 "$file" "$BOOT_LOGO"
+    install -m 644 "$file" "$CUSTOM_LOGO"
     rm -f "$file"
 }
 
 # Describes the start-up screen.
 boot_status_text() {
+    local logo="the Works In All Things logo"
+    [[ -f $CUSTOM_LOGO ]] && logo="your logo"
     if [[ $(get_setting QUIET_BOOT) != yes ]]; then
-        echo "normal (start-up text shown)"
+        echo "start-up text shown, then $logo while the browser starts"
     elif [[ -z $(boot_state METHOD) ]]; then
-        echo "quiet, but not set up on this computer"
-    elif [[ -f $BOOT_LOGO ]]; then
-        echo "quiet, with a logo"
+        echo "$logo while the browser starts (the start-up text can't be hidden on this computer)"
     else
-        echo "quiet (black)"
+        echo "quiet, with $logo"
     fi
 }
 
-# Hides the start-up text ("quiet": a black screen, or the logo, until the browser starts), shows it again
-# ("normal"), or sets the logo ("logo <file or address>", or "logo none").
+# Hides the start-up text ("quiet": the logo on black until the page appears), shows it again ("normal"), or sets
+# the logo ("logo <file or address>", or "logo default" for the Works In All Things logo).
 cmd_boot() {
     case ${1:-} in
         "")
@@ -967,17 +994,16 @@ cmd_boot() {
             require_root boot
             require_installed
             check_system
-            [[ -n ${2:-} ]] || die "Use: kiosk boot logo <file.png or https address>, or: kiosk boot logo none"
-            if [[ $2 == none ]]; then
-                rm -f "$BOOT_LOGO"
+            [[ -n ${2:-} ]] || die "Use: kiosk boot logo <file.png or https address>, or: kiosk boot logo default"
+            if [[ $2 == default ]]; then
+                rm -f "$CUSTOM_LOGO"
             else
                 set_boot_logo "$2"
-                set_setting QUIET_BOOT yes
             fi
             apply_boot
             info "Start-up: $(boot_status_text). It takes effect at the next restart."
             ;;
-        *) die "Use: kiosk boot quiet|normal, or: kiosk boot logo <file.png or https address>|none" ;;
+        *) die "Use: kiosk boot quiet|normal, or: kiosk boot logo <file.png or https address>|default" ;;
     esac
 }
 
@@ -1121,7 +1147,6 @@ cmd_uninstall() {
     systemctl daemon-reload
     blank_screen 0
     boot_quiet_off
-    rm -f "$BOOT_LOGO"
 
     display_manager=$(recall DISPLAY_MANAGER)
     getty=$(recall GETTY_TTY1)
@@ -1175,7 +1200,7 @@ cmd_help() {
     help_line "${s}kiosk restart-time HH:MM|off" "Restart the computer at this time each day"
     help_line "${s}kiosk restart" "Restart the browser"
     help_line "${s}kiosk boot quiet|normal" "Hide the start-up text, or show it again"
-    help_line "${s}kiosk boot logo <file.png>|none" "Show a logo while the computer starts (or an https address)"
+    help_line "${s}kiosk boot logo <file.png>|default" "Your logo at start-up (or an https address); default: ours"
     help_line "kiosk status" "Show what the kiosk is doing"
     help_line "${s}kiosk logs" "Show recent messages"
     help_line "${s}kiosk update [branch or tag]" "Update Kiosk to the latest release (or a branch or tag)"

@@ -1,11 +1,29 @@
 #!/usr/bin/env bash
-# Works In All Things Kiosk: starts the cage display server with the session script. Older cage versions (before
-# 0.1.5) turn the screen with their own -r option; newer ones are turned by the session script with wlr-randr.
+# Works In All Things Kiosk: waits for the address, then starts the cage display server with the session script.
+# Older cage versions (before 0.1.5) turn the screen with their own -r option; newer ones are turned by the session
+# script with wlr-randr.
 set -uo pipefail
 
+URL=""
 ROTATION=0
 # shellcheck source=/dev/null
 [[ -r /etc/kiosk/kiosk.conf ]] && . /etc/kiosk/kiosk.conf
+
+# Waits up to 90 seconds for the address to answer, so a TV that powers up with the network gives it time to
+# connect. It carries on anyway after that: a Signage player that was stored for offline plays without the network.
+# This runs before cage, so the start-up screen's logo stays up meanwhile.
+wait_for_network() {
+    local attempt
+    for attempt in $(seq 1 18); do
+        if curl --silent --globoff --output /dev/null --max-time 5 "$URL"; then
+            return 0
+        fi
+        [[ $attempt -lt 18 ]] && sleep 5
+    done
+    echo "$URL didn't answer within 90 seconds; starting the browser anyway." >&2
+}
+
+[[ -z $URL ]] || wait_for_network
 
 cage_options=(-s)
 if [[ $ROTATION != 0 ]] && cage -h 2>&1 | grep -qE '^[[:space:]]*-r[[:space:]]'; then

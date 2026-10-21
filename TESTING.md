@@ -30,7 +30,7 @@ Write each result in the tables at the end: ✓, ✗ (with a note), or – for n
 |---|---|---|
 | 3.1 | Pull the power while it plays; plug it back in. | It plays again with no "Restore pages?" bubble. |
 | 3.2 | On Ctrl+Alt+F2, log in and run `sudo pkill chromium` (Flathub browser: `sudo pkill -f org.chromium`). | Back within about 10 seconds. |
-| 3.3 | Turn on with the network unplugged (before Signage ever stored anything, use a fresh install). | It waits about 90 seconds, then shows the browser's offline page. Plug in the network: it loads within a minute or two (or after `sudo kiosk restart`). |
+| 3.3 | Turn on with the network unplugged (before Signage ever stored anything, use a fresh install). | It waits about 90 seconds with the logo on the screen, then shows the browser's offline page. Plug in the network: it loads within a minute or two (or after `sudo kiosk restart`). |
 
 ## 4. Settings
 
@@ -84,15 +84,16 @@ On a virtual machine, watch the start-up in its console. Check each after a rest
 
 | # | Do this | You should see |
 |---|---|---|
-| 8.1 | A fresh install, pressing Enter at *Hide the start-up text?* Restart. | No boot menu and no scrolling text: a black screen from the end of the computer maker's logo until the browser starts. `kiosk status` says *Start-up: quiet (black)*. |
-| 8.2 | `sudo kiosk boot logo <a PNG file or https address>`. Restart. | The logo in the middle of a black screen, then the browser. *Start-up: quiet, with a logo*. |
+| 8.1 | A fresh install, pressing Enter at *Hide the start-up text?* Restart. | No boot menu and no scrolling text. After the computer maker's logo, the Works In All Things logo on black, staying up until the page appears (at most a moment of black as the browser starts). `kiosk status` says *Start-up: quiet, with the Works In All Things logo*. |
+| 8.2 | `sudo kiosk boot logo <a PNG file or https address>`. Restart. | Your logo instead, the same way. *Start-up: quiet, with your logo*. |
 | 8.3 | `sudo kiosk boot logo <a text file>` | Refused: *The logo must be a PNG image*. Nothing changes. |
-| 8.4 | `sudo kiosk boot logo none`. Restart. | Black again, with no logo. |
+| 8.4 | `sudo kiosk boot logo default`. Restart. | The Works In All Things logo again. |
 | 8.5 | Restart holding **Shift** (or pressing **Esc**) as it starts. | The boot menu appears. Choose the first entry: it starts as normal. |
-| 8.6 | `sudo kiosk boot normal`. Restart. | The start-up is as it was before Kiosk (the boot menu on Debian, the distribution's own start-up screen or text). *Start-up: normal*. |
+| 8.6 | `sudo kiosk boot normal`. Restart. | The start-up text is back (the boot menu on Debian, the distribution's own start-up screen or messages), then the logo while the browser starts. *Start-up: start-up text shown, then …*. |
 | 8.7 | `sudo kiosk boot quiet`, run it again, then restart. | Quiet again; the second run changes nothing (no *Updating the start-up image*). |
-| 8.8 | `sudo kiosk uninstall`, then restart. | The start-up is as it was before Kiosk. `/etc/default/grub.d/90-kiosk.cfg` (Debian, Ubuntu) and `/usr/share/plymouth/themes/kiosk` are gone; on a Raspberry Pi, `cmdline.txt` is as it was and `config.txt` has no Kiosk lines. |
-| 8.9 | Install without questions with `--quiet-boot no`, and a managed install (7.1). | The first starts with the text shown (*Start-up: normal*); the managed one is quiet. |
+| 8.8 | Unplug the network and restart (a kiosk whose Signage player was stored for offline play). | The logo stays up for about 90 seconds, then the player plays offline. |
+| 8.9 | `sudo kiosk uninstall`, then restart. | The start-up is as it was before Kiosk. `/etc/default/grub.d/90-kiosk.cfg` (Debian, Ubuntu), `/usr/share/plymouth/themes/kiosk` and `/etc/systemd/system/plymouth-quit.service.d/90-kiosk.conf` are gone; on a Raspberry Pi, `cmdline.txt` is as it was and `config.txt` has no Kiosk lines. |
+| 8.10 | Install without questions with `--quiet-boot no`, and a managed install (7.1). | The first shows the start-up text (*Start-up: start-up text shown, …*); the managed one is quiet. Both show the logo while the browser starts. |
 
 ## Results
 
@@ -112,4 +113,4 @@ Fill in one column per computer and distribution (for example *N100 mini PC, Deb
 | 5.1–5.2 Uninstall | ✓ | ✓ | | |
 | 6.1 A week untouched | ✓ | Running since 2026-10-21 | | |
 | 7.1–7.11 Managed by Rock | ✓ | ✓ | | |
-| 8.1–8.9 Start-up screen (1.1.0) | | | | |
+| 8.1–8.10 Start-up screen (1.1.0) | | | | |

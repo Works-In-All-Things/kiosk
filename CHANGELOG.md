@@ -2,12 +2,15 @@
 
 ## 1.1.0 (not released yet)
 
-- **A quiet start-up, on by default.** No boot menu and no scrolling text: a black screen until the browser starts,
-  or your logo in the middle of it (`kiosk boot logo <file.png or https address>`). The installer asks (yes unless
-  you say no; `--quiet-boot yes|no` without questions), and a managed install is quiet. `kiosk boot normal` shows
-  the start-up text again, and `kiosk uninstall` puts the start-up back as it was. Works on Debian, Ubuntu and Mint
-  (GRUB), Fedora (grubby) and Raspberry Pi OS; `kiosk status` shows it. Kiosks updated from 1.0 keep their
-  start-up until you run `kiosk boot quiet`.
+- **A start-up logo.** While the computer starts, the screen shows the Works In All Things logo on black, and it
+  stays up until the page appears (the browser opens a small start page with the logo, then the address). Set your
+  own with `kiosk boot logo <file.png or https address>`; `kiosk boot logo default` puts ours back.
+- **A quiet start-up, on by default.** No boot menu and no scrolling text. The installer asks (yes unless you say
+  no; `--quiet-boot yes|no` without questions), and a managed install is quiet. `kiosk boot normal` shows the text
+  again, and `kiosk uninstall` puts the start-up back as it was. Works on Debian, Ubuntu and Mint (GRUB), Fedora
+  (grubby) and Raspberry Pi OS; `kiosk status` shows it. Kiosks updated from 1.0 keep their start-up text until you
+  run `kiosk boot quiet`, and show the logo while the browser starts.
+- The wait for the address (up to 90 seconds) now happens before the display starts, with the logo on the screen.
 
 ## 1.0.1
 

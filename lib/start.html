@@ -1,0 +1,25 @@
+<!doctype html>
+<!-- Works In All Things Kiosk: the browser's first page. It shows the logo (logo.png beside it) on black, then opens
+     the kiosk's address, which is given after the "#". The browser keeps this page up until the address has
+     something to show, so the logo stays until the page appears. -->
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Starting</title>
+    <style>
+        html, body { margin: 0; height: 100%; overflow: hidden; background: #000; cursor: none; }
+        body { display: flex; align-items: center; justify-content: center; }
+        img { max-width: 50vw; max-height: 50vh; }
+    </style>
+</head>
+<body>
+    <img id="logo" alt="" src="logo.png">
+    <script>
+        // Opens the kiosk's address once the logo is on the screen (or straight away if it can't be shown).
+        const address = decodeURIComponent(location.hash.slice(1));
+        const open = () => { if (address) location.replace(address); };
+        document.getElementById("logo").decode()
+            .then(() => requestAnimationFrame(() => requestAnimationFrame(open)), open);
+    </script>
+</body>
+</html>
