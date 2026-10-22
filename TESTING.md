@@ -109,11 +109,11 @@ From another computer on the same network, with a VNC viewer: TigerVNC, and Real
 | 9.5 | `sudo kiosk vnc password`, set a new one. | The old password is refused, the new one works. |
 | 9.6 | `sudo kiosk vnc ssh-only`. Try 9.3 again, then `ssh -L 5901:localhost:5900 <you>@<kiosk IP>` and connect the viewer to `localhost:5901`. | Direct: no connection. Through the tunnel: it works. |
 | 9.6a | On a Mac, with the tunnel from 9.6: Finder ▸ **Go ▸ Connect to Server**, `vnc://localhost:5901`, user `kiosk` and the VNC password. Then try `vnc://<kiosk IP>` after `sudo kiosk vnc on`. | Through the tunnel, Screen Sharing shows and controls the screen. Directly (with `on`), Screen Sharing can't sign in. |
-| 9.6b | Note `wayvnc --version` (0.10 or later needed). `sudo kiosk vnc on --allow-mac`, then `vnc://<kiosk IP>` in Screen Sharing, with the VNC password. Then `sudo kiosk vnc on` and try again. `sudo kiosk vnc on --mac` too. | With `--allow-mac` it signs in and works, and `kiosk vnc` says *Mac Screen Sharing allowed*. After plain `on`, it can't sign in. `--mac` is refused with how to use the command. |
+| 9.6b | Note `wayvnc --version`. `sudo kiosk vnc on --allow-mac` (on Ubuntu 26.04, with wayvnc 0.9, it says *Building wayvnc 0.10* and *Built wayvnc: v0.10.2*; run it again: no rebuild). `kiosk vnc` says which wayvnc runs. Then `vnc://<kiosk IP>` in Screen Sharing, with the VNC password. Then `sudo kiosk vnc on` and try again. `sudo kiosk vnc on --mac` too. | With `--allow-mac` it signs in and works, and `kiosk vnc` says *Mac Screen Sharing allowed*. After plain `on`, it can't sign in. `--mac` is refused with how to use the command. |
 | 9.7 | `sudo kiosk screen off`, then `sudo kiosk screen on`. | VNC drops while the screen is off and works again once it's back. |
 | 9.8 | `sudo kiosk vnc off`, then `sudo reboot`. | No connection, before and after the restart. *VNC: off* in `kiosk status`. |
 | 9.9 | On Fedora (firewalld on): `sudo kiosk vnc on`, `sudo firewall-cmd --list-services`, then `sudo kiosk vnc off` and list again. | `vnc-server` is listed while VNC is on, and gone after off. (On Ubuntu with `sudo ufw enable` first: `sudo ufw status` shows `5900/tcp` the same way.) |
-| 9.10 | VNC on, then `sudo kiosk uninstall`. | `/etc/kiosk/vnc` is gone, and so is any firewall port from 9.9. |
+| 9.10 | VNC on, then `sudo kiosk uninstall`. | `/etc/kiosk/vnc` and `/usr/local/lib/kiosk-wayvnc` are gone, and so is any firewall port from 9.9. |
 
 ## Results
 
