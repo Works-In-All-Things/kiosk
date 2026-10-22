@@ -107,7 +107,8 @@ From another computer on the same network, with a VNC viewer: TigerVNC, and Real
 | 9.3 | Connect the viewer to `<kiosk IP>:5900`, user `kiosk`, the password. | It asks to trust the certificate (TigerVNC) or shows the key (RealVNC), then shows the screen. Moving the mouse moves a pointer on the TV; clicking and typing work in the page. |
 | 9.4 | Connect with a wrong password. | Refused. |
 | 9.5 | `sudo kiosk vnc password`, set a new one. | The old password is refused, the new one works. |
-| 9.6 | `sudo kiosk vnc ssh-only`. Try 9.3 again, then `ssh -L 5900:localhost:5900 <you>@<kiosk IP>` and connect the viewer to `localhost:5900`. | Direct: no connection. Through the tunnel: it works. |
+| 9.6 | `sudo kiosk vnc ssh-only`. Try 9.3 again, then `ssh -L 5901:localhost:5900 <you>@<kiosk IP>` and connect the viewer to `localhost:5901`. | Direct: no connection. Through the tunnel: it works. |
+| 9.6a | On a Mac, with the tunnel from 9.6: Finder ▸ **Go ▸ Connect to Server**, `vnc://localhost:5901`, user `kiosk` and the VNC password. Then try `vnc://<kiosk IP>` after `sudo kiosk vnc on`. | Through the tunnel, Screen Sharing shows and controls the screen. Directly (with `on`), Screen Sharing can't sign in. |
 | 9.7 | `sudo kiosk screen off`, then `sudo kiosk screen on`. | VNC drops while the screen is off and works again once it's back. |
 | 9.8 | `sudo kiosk vnc off`, then `sudo reboot`. | No connection, before and after the restart. *VNC: off* in `kiosk status`. |
 | 9.9 | On Fedora (firewalld on): `sudo kiosk vnc on`, `sudo firewall-cmd --list-services`, then `sudo kiosk vnc off` and list again. | `vnc-server` is listed while VNC is on, and gone after off. (On Ubuntu with `sudo ufw enable` first: `sudo ufw status` shows `5900/tcp` the same way.) |

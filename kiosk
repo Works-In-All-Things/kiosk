@@ -1244,8 +1244,9 @@ vnc_connect_hint() {
             echo "kiosk and the VNC password. The viewer asks you to trust this kiosk's certificate the first time."
             ;;
         ssh-only)
-            echo "On your computer: ssh -L $VNC_PORT:localhost:$VNC_PORT <you>@$address"
-            echo "Then connect a VNC viewer to localhost:$VNC_PORT, with the user name kiosk and the VNC password."
+            echo "On your computer: ssh -L 5901:localhost:$VNC_PORT <you>@$address"
+            echo "Then connect a VNC viewer to localhost:5901 (on a Mac, Screen Sharing works: vnc://localhost:5901),"
+            echo "with the user name kiosk and the VNC password."
             ;;
     esac
 }
@@ -1304,6 +1305,8 @@ ask_vnc_password() {
 
 # Writes wayvnc's settings from the VNC setting and the saved password. It always asks for the password and
 # encrypts the connection: TLS (TigerVNC and other VeNCrypt viewers) or RSA-AES (RealVNC Viewer and others).
+# Through an SSH tunnel (ssh-only), SSH already encrypts it, so the Mac's Screen Sharing may sign in too, with
+# Apple's own method (it protects the password but not the picture).
 write_vnc_config() {
     local address=0.0.0.0 version
     [[ $(get_setting VNC) == ssh-only ]] && address=127.0.0.1
@@ -1322,6 +1325,7 @@ write_vnc_config() {
         if [[ $version =~ ^([0-9]+)\.([0-9]+)$ ]] &&
             ((BASH_REMATCH[1] > 0 || BASH_REMATCH[2] >= 7)); then
             echo "rsa_private_key_file=rsa_key.pem"
+            [[ $address == 127.0.0.1 ]] && echo "relax_encryption=true"
         fi
     } >"$VNC_DIR/config.new"
     chown "root:$KIOSK_USER" "$VNC_DIR/config.new"

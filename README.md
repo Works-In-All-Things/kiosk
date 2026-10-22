@@ -151,11 +151,14 @@ vnc` shows it), with the user name `kiosk` and that password. The first time, th
 kiosk's certificate.
 
 - **Always protected:** it asks for the password and encrypts the connection (TLS, or RSA-AES on wayvnc 0.7 and
-  later). Viewers that only know the old unencrypted VNC password, such as the Mac's Screen Sharing, can't connect.
+  later). The Mac's own Screen Sharing can't encrypt the picture, so it connects only through SSH (below); on a
+  Mac, use RealVNC Viewer or TigerVNC to connect directly.
 - **From the network:** `on` listens on every network the kiosk is on. If a firewall is on (firewalld, as on
   Fedora, or ufw), Kiosk opens port 5900 and closes it again with `off` or uninstall.
 - **Only through SSH:** `sudo kiosk vnc ssh-only` listens on the kiosk itself only. Connect with
-  `ssh -L 5900:localhost:5900 you@<kiosk>`, then point the viewer at `localhost:5900`.
+  `ssh -L 5901:localhost:5900 you@<kiosk>`, then point the viewer at `localhost:5901`. SSH encrypts the
+  connection, so here the Mac's **Screen Sharing** works too (wayvnc 0.7 and later): in the Finder, **Go ▸
+  Connect to Server**, `vnc://localhost:5901`, user name `kiosk` and the VNC password.
 - `sudo kiosk vnc password` changes the password; `sudo kiosk vnc off` turns it off. `kiosk status` shows it.
 - It's part of the display, so it's away while the screen is off (`kiosk screen off` or the off hours), and the
   connection drops for a few seconds when the browser restarts.
