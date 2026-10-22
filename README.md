@@ -155,13 +155,15 @@ kiosk's certificate.
   later). The Mac's own Screen Sharing can't encrypt the picture, so it connects through SSH (below); on a Mac,
   RealVNC Viewer or TigerVNC connect directly with full encryption.
 - **Screen Sharing directly:** `sudo kiosk vnc on --allow-mac` lets the Mac's Screen Sharing connect from the
-  network too (`vnc://<kiosk IP>`, user name `kiosk`). The password stays protected, but anyone on that network
-  could watch the picture and the typing. `sudo kiosk vnc on` turns that back off.
+  network too (`vnc://<kiosk IP>` and the VNC password). It needs wayvnc 0.10 or later (`wayvnc --version`;
+  Kiosk warns when it's older). Screen Sharing uses the old VNC password method, which checks only the first 8
+  characters and encrypts nothing, so anyone on that network could watch the picture and the typing. Use it on a
+  network you trust; `sudo kiosk vnc on` turns it back off.
 - **From the network:** `on` listens on every network the kiosk is on. If a firewall is on (firewalld, as on
   Fedora, or ufw), Kiosk opens port 5900 and closes it again with `off` or uninstall.
 - **Only through SSH:** `sudo kiosk vnc ssh-only` listens on the kiosk itself only. Connect with
   `ssh -L 5901:localhost:5900 you@<kiosk>`, then point the viewer at `localhost:5901`. SSH encrypts the
-  connection, so here the Mac's **Screen Sharing** works too (wayvnc 0.7 and later): in the Finder, **Go ▸
+  connection, so here the Mac's **Screen Sharing** works too (wayvnc 0.10 and later): in the Finder, **Go ▸
   Connect to Server**, `vnc://localhost:5901`, user name `kiosk` and the VNC password.
 - `sudo kiosk vnc password` changes the password; `sudo kiosk vnc off` turns it off. `kiosk status` shows it.
 - It's part of the display, so it's away while the screen is off (`kiosk screen off` or the off hours), and the

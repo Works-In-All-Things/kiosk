@@ -1202,6 +1202,9 @@ cmd_vnc() {
             set_setting VNC "$1"
             set_setting VNC_ALLOW_MAC "$allow_mac"
             write_vnc_config
+            if [[ $allow_mac == yes || $1 == ssh-only ]] && ! grep -q '^allow_broken_crypto=' "$VNC_DIR/config"; then
+                warn "This wayvnc ($(wayvnc --version 2>/dev/null | head -n 1)) is older than 0.10, which the Mac's Screen Sharing needs. Use RealVNC Viewer or TigerVNC on the Mac instead."
+            fi
             if [[ $1 == on ]]; then
                 open_vnc_firewall
             else
@@ -1343,9 +1346,12 @@ ask_vnc_password() {
 # Apple's own method (it protects the password but not the picture). "kiosk vnc on --allow-mac" allows that
 # method from the network as well, for those who accept an unencrypted picture.
 write_vnc_config() {
-    local address=0.0.0.0 version
+    local address=0.0.0.0 version minor=0 allow_mac=no
     [[ $(get_setting VNC) == ssh-only ]] && address=127.0.0.1
+    [[ $address == 127.0.0.1 || $(get_setting VNC_ALLOW_MAC) == yes ]] && allow_mac=yes
+    # wayvnc's version as a number of minor versions (0.10 is 10); 1.x and later count as 100 and more.
     version=$(wayvnc --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -n 1)
+    [[ $version =~ ^([0-9]+)\.([0-9]+)$ ]] && minor=$((BASH_REMATCH[1] * 100 + BASH_REMATCH[2]))
     {
         echo "# Works In All Things Kiosk: written by \"kiosk vnc\"; change VNC with the kiosk command, not here."
         echo "use_relative_paths=true"
@@ -1357,12 +1363,13 @@ write_vnc_config() {
         echo "private_key_file=tls_key.pem"
         echo "certificate_file=tls_cert.pem"
         # RSA-AES arrived in wayvnc 0.7; older versions offer TLS only.
-        if [[ $version =~ ^([0-9]+)\.([0-9]+)$ ]] &&
-            ((BASH_REMATCH[1] > 0 || BASH_REMATCH[2] >= 7)); then
-            echo "rsa_private_key_file=rsa_key.pem"
-            if [[ $address == 127.0.0.1 || $(get_setting VNC_ALLOW_MAC) == yes ]]; then
-                echo "relax_encryption=true"
-            fi
+        ((minor >= 7)) && echo "rsa_private_key_file=rsa_key.pem"
+        # The Mac's Screen Sharing: Apple's sign-in (relax_encryption), and from wayvnc 0.10 the old VNC password
+        # (DES, allow_broken_crypto), which Screen Sharing needs; it checks only the password's first 8 characters.
+        # Neither encrypts the picture.
+        if [[ $allow_mac == yes ]]; then
+            ((minor >= 7)) && echo "relax_encryption=true"
+            ((minor >= 10)) && echo "allow_broken_crypto=true"
         fi
     } >"$VNC_DIR/config.new"
     chown "root:$KIOSK_USER" "$VNC_DIR/config.new"
