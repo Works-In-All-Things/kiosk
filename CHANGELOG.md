@@ -5,7 +5,8 @@
 - **Remote control over VNC.** `sudo kiosk vnc on` lets you see and use the kiosk's screen, keyboard and mouse
   from another computer with a VNC viewer such as TigerVNC or RealVNC Viewer. It's off until turned on, always
   asks for a password and always encrypts the connection. `sudo kiosk vnc ssh-only` allows it only through an SSH
-  tunnel; `kiosk vnc password` and `kiosk vnc off` do what they say. Uses wayvnc, installed when VNC is first
+  tunnel, where the Mac's Screen Sharing works too; `sudo kiosk vnc on --allow-mac` lets Screen Sharing connect
+  directly (its picture isn't encrypted). `kiosk vnc password` and `kiosk vnc off` do what they say. Uses wayvnc, installed when VNC is first
   turned on. If firewalld or ufw is on, Kiosk opens port 5900 and closes it again with `off` or uninstall.
 
 - **No "access other devices on your local network" question.** Chromium now asks before a site reaches devices on

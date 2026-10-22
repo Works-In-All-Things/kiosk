@@ -88,6 +88,7 @@ sudo kiosk boot logo <file.png>|default
                                     Your logo while the computer starts (a file or an https address)
 kiosk vnc                           Show whether remote control (VNC) is on, and how to connect
 sudo kiosk vnc on|off               Allow control of the screen from the network over VNC, or stop it
+sudo kiosk vnc on --allow-mac       Also allow the Mac's Screen Sharing (its picture isn't encrypted)
 sudo kiosk vnc ssh-only             Allow VNC only through an SSH tunnel
 sudo kiosk vnc password             Change the VNC password
 kiosk status                        Show what the kiosk is doing
@@ -151,8 +152,11 @@ vnc` shows it), with the user name `kiosk` and that password. The first time, th
 kiosk's certificate.
 
 - **Always protected:** it asks for the password and encrypts the connection (TLS, or RSA-AES on wayvnc 0.7 and
-  later). The Mac's own Screen Sharing can't encrypt the picture, so it connects only through SSH (below); on a
-  Mac, use RealVNC Viewer or TigerVNC to connect directly.
+  later). The Mac's own Screen Sharing can't encrypt the picture, so it connects through SSH (below); on a Mac,
+  RealVNC Viewer or TigerVNC connect directly with full encryption.
+- **Screen Sharing directly:** `sudo kiosk vnc on --allow-mac` lets the Mac's Screen Sharing connect from the
+  network too (`vnc://<kiosk IP>`, user name `kiosk`). The password stays protected, but anyone on that network
+  could watch the picture and the typing. `sudo kiosk vnc on` turns that back off.
 - **From the network:** `on` listens on every network the kiosk is on. If a firewall is on (firewalld, as on
   Fedora, or ufw), Kiosk opens port 5900 and closes it again with `off` or uninstall.
 - **Only through SSH:** `sudo kiosk vnc ssh-only` listens on the kiosk itself only. Connect with
