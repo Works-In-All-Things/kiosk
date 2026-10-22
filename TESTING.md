@@ -134,5 +134,5 @@ Fill in one column per computer and distribution (for example *N100 mini PC, Deb
 | 6.1 A week untouched | ✓ | Running since 2026-10-21 | | |
 | 7.1–7.11 Managed by Rock | ✓ | ✓ | | |
 | 8.1–8.10 Start-up screen | ✓ (1.1.0) | ✓ (1.1.0) | | |
-| 2.4 Local network question | | | | |
-| 9.1–9.10 Remote control (VNC) | 9.6b ✓ (Screen Sharing from a Mac over VPN; wayvnc 0.10.2 built by Kiosk) | | | |
+| 2.4 Local network question | ✓ (1.2.0) | | | |
+| 9.1–9.10 Remote control (VNC) | ✓ (1.2.0; Screen Sharing from a Mac over VPN, wayvnc 0.10.2 built by Kiosk) | | | |
