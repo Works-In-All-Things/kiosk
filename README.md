@@ -86,6 +86,10 @@ sudo kiosk restart                  Restart the browser
 sudo kiosk boot quiet|normal        Hide the start-up text, or show it again
 sudo kiosk boot logo <file.png>|default
                                     Your logo while the computer starts (a file or an https address)
+kiosk vnc                           Show whether remote control (VNC) is on, and how to connect
+sudo kiosk vnc on|off               Allow control of the screen from the network over VNC, or stop it
+sudo kiosk vnc ssh-only             Allow VNC only through an SSH tunnel
+sudo kiosk vnc password             Change the VNC password
 kiosk status                        Show what the kiosk is doing
 sudo kiosk logs                     Show recent messages
 sudo kiosk update [branch or tag]    Update Kiosk to the latest release (does nothing if it's up to date)
@@ -131,6 +135,32 @@ How it works:
   kiosk is removed in Rock or given a new code, it keeps showing what it shows and stops sending heartbeats;
   `kiosk status` says so.
 - `sudo kiosk unmanage` stops it: the settings stay as they are and the `kiosk` command can change them again.
+
+## Remote control (VNC)
+
+See and use the kiosk's screen, keyboard and mouse from another computer, as if you were standing at the TV. It's
+off until you turn it on:
+
+```bash
+sudo kiosk vnc on
+```
+
+It installs **wayvnc**, asks for a password (8 or more characters), and restarts the browser. Then connect a VNC
+viewer, such as [TigerVNC](https://tigervnc.org) or RealVNC Viewer, to the kiosk's IP address (port 5900; `kiosk
+vnc` shows it), with the user name `kiosk` and that password. The first time, the viewer asks you to trust the
+kiosk's certificate.
+
+- **Always protected:** it asks for the password and encrypts the connection (TLS, or RSA-AES on wayvnc 0.7 and
+  later). Viewers that only know the old unencrypted VNC password, such as the Mac's Screen Sharing, can't connect.
+- **From the network:** `on` listens on every network the kiosk is on. If a firewall is on (firewalld, as on
+  Fedora, or ufw), Kiosk opens port 5900 and closes it again with `off` or uninstall.
+- **Only through SSH:** `sudo kiosk vnc ssh-only` listens on the kiosk itself only. Connect with
+  `ssh -L 5900:localhost:5900 you@<kiosk>`, then point the viewer at `localhost:5900`.
+- `sudo kiosk vnc password` changes the password; `sudo kiosk vnc off` turns it off. `kiosk status` shows it.
+- It's part of the display, so it's away while the screen is off (`kiosk screen off` or the off hours), and the
+  connection drops for a few seconds when the browser restarts.
+- The password and keys are in `/etc/kiosk/vnc`, readable only by root and the kiosk user. A kiosk managed by Rock
+  keeps VNC as set on the kiosk; Rock doesn't change it.
 
 ## Start-up screen
 
@@ -192,7 +222,8 @@ fit.
 sudo kiosk uninstall
 ```
 
-It removes Kiosk's files, settings, timers, browser policy and the `kiosk` user, puts the start-up text and screen
+It removes Kiosk's files, settings, timers, browser policy, VNC settings (and any firewall port it opened) and
+the `kiosk` user, puts the start-up text and screen
 back as they were, turns the console login (and any desktop login screen) back on, and leaves the installed packages, such as
 cage, Chromium and Plymouth, in place.
 

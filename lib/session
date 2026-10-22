@@ -10,6 +10,7 @@ ROTATION=0
 RESOLUTION=""
 BROWSER=""
 EXTRA_FLAGS=""
+VNC=off
 # shellcheck source=/dev/null
 [[ -r $CONFIG ]] && . "$CONFIG"
 
@@ -125,6 +126,15 @@ flags=(
 # the local network), Chromium is told to treat just that address as secure, so Signage can still store its slides.
 if [[ $URL =~ ^(http://[^/?#]+) ]]; then
     flags+=(--unsafely-treat-insecure-origin-as-secure="${BASH_REMATCH[1]}")
+fi
+# Remote control ("kiosk vnc on"): wayvnc shares this screen, keyboard and mouse, with the password and encryption
+# in its settings. It ends with cage.
+if [[ $VNC == on || $VNC == ssh-only ]]; then
+    if command -v wayvnc >/dev/null 2>&1 && [[ -r /etc/kiosk/vnc/config ]]; then
+        wayvnc --config /etc/kiosk/vnc/config --render-cursor &
+    else
+        echo "VNC is on, but wayvnc or its settings are missing. Run: sudo kiosk vnc on" >&2
+    fi
 fi
 if [[ -n $EXTRA_FLAGS ]]; then
     read -r -a extra <<<"$EXTRA_FLAGS"

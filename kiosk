@@ -38,6 +38,10 @@ PLYMOUTH_QUIT_DROPIN=$UNIT_DIR/plymouth-quit.service.d/90-kiosk.conf
 # Flathub's Chromium reads its own extension folder (Kiosk's whole folder, so uninstall removes it).
 NATIVE_POLICY_FILE=/etc/chromium/policies/managed/works-in-all-things-kiosk.json
 FLATPAK_POLICY_EXTENSION=/var/lib/flatpak/extension/$FLATPAK_APP.Extension.kiosk
+# Remote control over VNC ("kiosk vnc"): wayvnc's settings, password and keys, readable only by root and the kiosk
+# user; and the port it listens on.
+VNC_DIR=$CONFIG_DIR/vnc
+VNC_PORT=5900
 
 SOURCE_DIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
 KIOSK_VERSION=$(cat "$SOURCE_DIR/VERSION" 2>/dev/null || echo unknown)
@@ -203,6 +207,10 @@ RESTART_TIME=03:30
 # Hide the start-up text (yes or no): the logo on black until the page appears. Change it with "kiosk boot quiet"
 # or "kiosk boot normal", and the logo with "kiosk boot logo", not here.
 QUIET_BOOT=yes
+
+# Remote control over VNC: off, on (from the network) or ssh-only (through an SSH tunnel). Change it with
+# "kiosk vnc", not here.
+VNC=off
 
 # The browser: flatpak, or the path of the distribution's Chromium. Set by the installer.
 BROWSER=''
@@ -1068,6 +1076,7 @@ cmd_status() {
     printf '  %-18s %s\n' "Resolution:" "${resolution:-auto}"
     printf '  %-18s %s\n' "Nightly restart:" "${restart_time:-off}"
     printf '  %-18s %s\n' "Start-up:" "$(boot_status_text)"
+    printf '  %-18s %s\n' "VNC:" "$(vnc_status_text)"
     printf '  %-18s %s\n' "Time zone:" "$(timedatectl show --property=Timezone --value 2>/dev/null || echo unknown)"
     printf '  %-18s %s\n' "Host name:" "$(hostname)"
     printf '  %-18s %s\n' "IP addresses:" "${addresses:-none}"
@@ -1166,6 +1175,186 @@ cmd_update_browser() {
     flatpak update --system --noninteractive -y "$FLATPAK_APP"
 }
 
+# VNC ---------------------------------------------------------------------------------------------------------
+
+# Shows whether remote control is on and how to connect, turns it on (from the network, or only through an SSH
+# tunnel) or off, or changes its password.
+cmd_vnc() {
+    case ${1:-} in
+        "")
+            require_installed
+            printf 'VNC: %s\n' "$(vnc_status_text)"
+            vnc_connect_hint
+            ;;
+        on | ssh-only)
+            require_root vnc
+            require_installed
+            install_vnc
+            [[ -s $VNC_DIR/password ]] || ask_vnc_password
+            set_setting VNC "$1"
+            write_vnc_config
+            if [[ $1 == on ]]; then
+                open_vnc_firewall
+            else
+                close_vnc_firewall
+            fi
+            systemctl restart kiosk.service
+            info "VNC is $(vnc_status_text)."
+            vnc_connect_hint
+            ;;
+        off)
+            require_root vnc
+            require_installed
+            set_setting VNC off
+            close_vnc_firewall
+            systemctl restart kiosk.service
+            info "VNC is off."
+            ;;
+        password)
+            require_root vnc
+            require_installed
+            [[ -d $VNC_DIR ]] || die "Turn VNC on first: ${SUDO_HINT}kiosk vnc on"
+            can_ask || die "Run this in a terminal, where it can ask for the new password."
+            ask_vnc_password
+            write_vnc_config
+            [[ $(get_setting VNC) =~ ^(on|ssh-only)$ ]] && systemctl restart kiosk.service
+            info "The VNC password is changed."
+            ;;
+        *) die "Use: kiosk vnc on|ssh-only|off|password" ;;
+    esac
+}
+
+# Describes the VNC setting in a few words.
+vnc_status_text() {
+    case $(get_setting VNC) in
+        on) printf 'on (port %s, user name kiosk)' "$VNC_PORT" ;;
+        ssh-only) printf 'on, through an SSH tunnel only' ;;
+        *) printf 'off' ;;
+    esac
+}
+
+# Says how to connect a VNC viewer, when VNC is on.
+vnc_connect_hint() {
+    local address
+    address=$(hostname -I 2>/dev/null | awk '{ print $1 }')
+    address=${address:-<this computer>}
+    case $(get_setting VNC) in
+        on)
+            echo "Connect a VNC viewer (such as TigerVNC or RealVNC Viewer) to $address:$VNC_PORT, with the user name"
+            echo "kiosk and the VNC password. The viewer asks you to trust this kiosk's certificate the first time."
+            ;;
+        ssh-only)
+            echo "On your computer: ssh -L $VNC_PORT:localhost:$VNC_PORT <you>@$address"
+            echo "Then connect a VNC viewer to localhost:$VNC_PORT, with the user name kiosk and the VNC password."
+            ;;
+    esac
+}
+
+# Installs wayvnc (and openssl for its keys), and makes the folder for its settings and keys. Safe to run again:
+# the keys are made once.
+install_vnc() {
+    if ! command -v wayvnc >/dev/null 2>&1 || ! command -v openssl >/dev/null 2>&1; then
+        detect_distro
+        [[ ${KIOSK_LISTS_REFRESHED:-no} == yes ]] || quietly pkg_refresh || true
+        pkg_install wayvnc openssl
+    fi
+    mkdir -p "$VNC_DIR"
+    chown "root:$KIOSK_USER" "$VNC_DIR"
+    chmod 750 "$VNC_DIR"
+    if [[ ! -s $VNC_DIR/tls_key.pem || ! -s $VNC_DIR/tls_cert.pem ]]; then
+        quietly openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:secp384r1 -sha384 -days 3650 -nodes \
+            -keyout "$VNC_DIR/tls_key.pem" -out "$VNC_DIR/tls_cert.pem" -subj "/CN=$(hostname)" \
+            -addext "subjectAltName=DNS:$(hostname),DNS:localhost,IP:127.0.0.1" ||
+            die "Couldn't make the VNC encryption key."
+    fi
+    if [[ ! -s $VNC_DIR/rsa_key.pem ]]; then
+        # wayvnc reads the older (PKCS#1) form; OpenSSL 3 makes it only when asked.
+        quietly openssl genrsa -traditional -out "$VNC_DIR/rsa_key.pem" 2048 ||
+            quietly openssl genrsa -out "$VNC_DIR/rsa_key.pem" 2048 ||
+            die "Couldn't make the VNC encryption key."
+    fi
+    chown "root:$KIOSK_USER" "$VNC_DIR"/*.pem
+    chmod 640 "$VNC_DIR"/*.pem
+}
+
+# Asks for a new VNC password (twice, without showing it) and saves it. With no one to ask, it makes one and
+# shows it.
+ask_vnc_password() {
+    local first second
+    if ! can_ask; then
+        first=$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 12)
+        info "VNC password: $first (change it with: ${SUDO_HINT}kiosk vnc password)"
+    else
+        while true; do
+            read -r -s -p "VNC password (8 or more characters): " first </dev/tty || true
+            echo >&2
+            if ((${#first} < 8)); then
+                warn "The password must have 8 or more characters."
+                continue
+            fi
+            read -r -s -p "The same password again: " second </dev/tty || true
+            echo >&2
+            [[ $first == "$second" ]] && break
+            warn "The passwords didn't match."
+        done
+    fi
+    mkdir -p "$VNC_DIR"
+    (umask 077 && printf '%s\n' "$first" >"$VNC_DIR/password")
+}
+
+# Writes wayvnc's settings from the VNC setting and the saved password. It always asks for the password and
+# encrypts the connection: TLS (TigerVNC and other VeNCrypt viewers) or RSA-AES (RealVNC Viewer and others).
+write_vnc_config() {
+    local address=0.0.0.0 version
+    [[ $(get_setting VNC) == ssh-only ]] && address=127.0.0.1
+    version=$(wayvnc --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -n 1)
+    {
+        echo "# Works In All Things Kiosk: written by \"kiosk vnc\"; change VNC with the kiosk command, not here."
+        echo "use_relative_paths=true"
+        echo "address=$address"
+        echo "port=$VNC_PORT"
+        echo "enable_auth=true"
+        echo "username=kiosk"
+        echo "password=$(head -n 1 "$VNC_DIR/password")"
+        echo "private_key_file=tls_key.pem"
+        echo "certificate_file=tls_cert.pem"
+        # RSA-AES arrived in wayvnc 0.7; older versions offer TLS only.
+        if [[ $version =~ ^([0-9]+)\.([0-9]+)$ ]] &&
+            ((BASH_REMATCH[1] > 0 || BASH_REMATCH[2] >= 7)); then
+            echo "rsa_private_key_file=rsa_key.pem"
+        fi
+    } >"$VNC_DIR/config.new"
+    chown "root:$KIOSK_USER" "$VNC_DIR/config.new"
+    chmod 640 "$VNC_DIR/config.new"
+    mv "$VNC_DIR/config.new" "$VNC_DIR/config"
+}
+
+# Opens the VNC port in the firewall when one is on (firewalld, as on Fedora, or ufw), and notes it so off and
+# uninstall close it again. A port someone else opened is left alone.
+open_vnc_firewall() {
+    if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+        firewall-cmd --permanent --query-service=vnc-server >/dev/null 2>&1 && return 0
+        quietly firewall-cmd --permanent --add-service=vnc-server && quietly firewall-cmd --reload &&
+            echo firewalld >"$VNC_DIR/firewall"
+    elif command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q '^Status: active'; then
+        ufw status 2>/dev/null | grep -qE "^$VNC_PORT/tcp +ALLOW" && return 0
+        quietly ufw allow "$VNC_PORT/tcp" && echo ufw >"$VNC_DIR/firewall"
+    fi
+    return 0
+}
+
+# Closes the VNC port in the firewall, if Kiosk opened it.
+close_vnc_firewall() {
+    case $(cat "$VNC_DIR/firewall" 2>/dev/null) in
+        firewalld)
+            quietly firewall-cmd --permanent --remove-service=vnc-server || true
+            quietly firewall-cmd --reload || true
+            ;;
+        ufw) quietly ufw delete allow "$VNC_PORT/tcp" || true ;;
+    esac
+    rm -f "$VNC_DIR/firewall"
+}
+
 # Uninstall ---------------------------------------------------------------------------------------------------
 
 # Removes everything Kiosk added and puts the computer back as it was. Packages are left installed, because
@@ -1190,6 +1379,7 @@ cmd_uninstall() {
     blank_screen 0
     boot_quiet_off
     remove_browser_policy
+    close_vnc_firewall
 
     display_manager=$(recall DISPLAY_MANAGER)
     getty=$(recall GETTY_TTY1)
@@ -1244,6 +1434,10 @@ cmd_help() {
     help_line "${s}kiosk restart" "Restart the browser"
     help_line "${s}kiosk boot quiet|normal" "Hide the start-up text, or show it again"
     help_line "${s}kiosk boot logo <file.png>|default" "Your logo at start-up (or an https address); default: ours"
+    help_line "kiosk vnc" "Show whether remote control (VNC) is on, and how to connect"
+    help_line "${s}kiosk vnc on|off" "Allow control of the screen from the network over VNC, or stop it"
+    help_line "${s}kiosk vnc ssh-only" "Allow VNC only through an SSH tunnel"
+    help_line "${s}kiosk vnc password" "Change the VNC password"
     help_line "kiosk status" "Show what the kiosk is doing"
     help_line "${s}kiosk logs" "Show recent messages"
     help_line "${s}kiosk update [branch or tag]" "Update Kiosk to the latest release (or a branch or tag)"
@@ -1274,7 +1468,7 @@ is_locking_command() {
     case $1 in
         install | rotate | resolution | restart-time | restart | update | uninstall | manage | unmanage) return 0 ;;
         boot) [[ -n ${2:-} ]] ;;
-        url) [[ -n ${2:-} ]] ;;
+        url | vnc) [[ -n ${2:-} ]] ;;
         screen) [[ ${2:-} != check ]] ;;
         *) return 1 ;;
     esac
@@ -1295,6 +1489,7 @@ main() {
         restart-time) cmd_restart_time "$@" ;;
         restart) cmd_restart ;;
         boot) cmd_boot "$@" ;;
+        vnc) cmd_vnc "$@" ;;
         status) cmd_status ;;
         logs) cmd_logs "$@" ;;
         update) cmd_update "$@" ;;
