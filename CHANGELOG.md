@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.2.0
+
+- **Remote control over VNC.** `sudo kiosk vnc on` lets you see and use the kiosk's screen, keyboard and mouse
+  from another computer with a VNC viewer such as TigerVNC or RealVNC Viewer. It's off until turned on, always
+  asks for a password and always encrypts the connection. `sudo kiosk vnc ssh-only` allows it only through an SSH
+  tunnel, where the Mac's Screen Sharing works too; `sudo kiosk vnc on --allow-mac` lets Screen Sharing connect
+  directly (it uses the old VNC password and encrypts nothing). That needs wayvnc 0.10; where the distribution's is
+  older (Ubuntu 26.04 has 0.9), Kiosk builds wayvnc 0.10.2 from source at fixed, checked versions (Debian, Ubuntu
+  and Raspberry Pi OS). `kiosk vnc password` and `kiosk vnc off` do what they say. Uses wayvnc, installed when VNC
+  is first turned on. If firewalld or ufw is on, Kiosk opens port 5900 and closes it again with `off` or uninstall.
+
+- **No "access other devices on your local network" question.** Chromium now asks before a site reaches devices on
+  the local network, and nobody can answer on a TV. Kiosk gives the kiosk's own site (the address's
+  `https://host`) that permission with a Chromium policy, written each time the browser starts so it follows the
+  address. Other sites still get the question. `kiosk uninstall` removes the policy.
+
 ## 1.1.0
 
 - **A start-up logo.** While the computer starts, the screen shows the Works In All Things logo on black, and it

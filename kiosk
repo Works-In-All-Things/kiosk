@@ -34,6 +34,22 @@ CUSTOM_LOGO=$CONFIG_DIR/boot-logo.png
 BOOT_STATE=$CONFIG_DIR/boot-state
 PLYMOUTH_THEME_DIR=/usr/share/plymouth/themes/kiosk
 PLYMOUTH_QUIT_DROPIN=$UNIT_DIR/plymouth-quit.service.d/90-kiosk.conf
+# Chromium policies Kiosk writes (see write_browser_policy): the distribution's Chromium reads /etc/chromium, and
+# Flathub's Chromium reads its own extension folder (Kiosk's whole folder, so uninstall removes it).
+NATIVE_POLICY_FILE=/etc/chromium/policies/managed/works-in-all-things-kiosk.json
+FLATPAK_POLICY_EXTENSION=/var/lib/flatpak/extension/$FLATPAK_APP.Extension.kiosk
+# Remote control over VNC ("kiosk vnc"): wayvnc's settings, password and keys, readable only by root and the kiosk
+# user; and the port it listens on.
+VNC_DIR=$CONFIG_DIR/vnc
+VNC_PORT=5900
+# The Mac's Screen Sharing needs wayvnc 0.10 or later. Where the distribution's is older, "kiosk vnc on
+# --allow-mac" builds this release (with the neatvnc and aml it needs, at these exact commits) into its own folder.
+WAYVNC_BUILD_DIR=/usr/local/lib/kiosk-wayvnc
+WAYVNC_SOURCES=(
+    "wayvnc v0.10.2 bb837459c75fd3c267d48af170ac7ed2566f67e5"
+    "neatvnc v1.0.3 783437adc56c2d7ce2cac1ec584acad798594267"
+    "aml v1.0.0 685035c9830aa89df02a43df89b644690bd885f5"
+)
 
 SOURCE_DIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
 KIOSK_VERSION=$(cat "$SOURCE_DIR/VERSION" 2>/dev/null || echo unknown)
@@ -199,6 +215,11 @@ RESTART_TIME=03:30
 # Hide the start-up text (yes or no): the logo on black until the page appears. Change it with "kiosk boot quiet"
 # or "kiosk boot normal", and the logo with "kiosk boot logo", not here.
 QUIET_BOOT=yes
+
+# Remote control over VNC: off, on (from the network) or ssh-only (through an SSH tunnel), and whether the Mac's
+# Screen Sharing may connect from the network (yes or no). Change them with "kiosk vnc", not here.
+VNC=off
+VNC_ALLOW_MAC=no
 
 # The browser: flatpak, or the path of the distribution's Chromium. Set by the installer.
 BROWSER=''
@@ -548,6 +569,44 @@ install_browser() {
     quietly flatpak install --system --noninteractive -y flathub "$FLATPAK_APP" ||
         die "Couldn't install Chromium from Flathub. Check the network and run the installer again."
     KIOSK_BROWSER=flatpak
+}
+
+# Writes Chromium's policy for the kiosk's address: its site may reach devices on the local network without
+# Chromium's "wants to access other devices on your local network" question, which nobody can answer on a TV.
+# Other sites still get the question. kiosk.service runs this (as root) each time the browser starts, so the
+# policy follows the address. It never fails: without the policy the page still loads.
+write_browser_policy() {
+    local url origin policy_file arch
+    url=$(get_setting URL)
+    origin=""
+    # Only a plain scheme://host[:port], so nothing in the address can break the JSON.
+    [[ $url =~ ^(https?://[A-Za-z0-9.:_-]+|https?://\[[0-9A-Fa-f:.]+\](:[0-9]+)?) ]] && origin=${BASH_REMATCH[1]}
+
+    if [[ $(get_setting BROWSER) == flatpak ]]; then
+        rm -f "$NATIVE_POLICY_FILE"
+        arch=$(flatpak --default-arch 2>/dev/null) || return 0
+        policy_file=$FLATPAK_POLICY_EXTENSION/$arch/1/policies/managed/kiosk.json
+    else
+        rm -rf "$FLATPAK_POLICY_EXTENSION"
+        policy_file=$NATIVE_POLICY_FILE
+    fi
+
+    if [[ -z $origin ]]; then
+        rm -f "$policy_file"
+        return 0
+    fi
+    if ! { mkdir -p "$(dirname "$policy_file")" &&
+        printf '{\n  "LocalNetworkAccessAllowedForUrls": ["%s"]\n}\n' "$origin" >"$policy_file.new" &&
+        chmod 644 "$policy_file.new" &&
+        mv "$policy_file.new" "$policy_file"; }; then
+        warn "Couldn't write the browser policy ($policy_file)."
+    fi
+}
+
+# Removes the browser policy Kiosk wrote.
+remove_browser_policy() {
+    rm -rf "$FLATPAK_POLICY_EXTENSION"
+    rm -f "$NATIVE_POLICY_FILE"
 }
 
 # Makes the kiosk user that the browser runs as. It has no password and can't log in.
@@ -1026,6 +1085,7 @@ cmd_status() {
     printf '  %-18s %s\n' "Resolution:" "${resolution:-auto}"
     printf '  %-18s %s\n' "Nightly restart:" "${restart_time:-off}"
     printf '  %-18s %s\n' "Start-up:" "$(boot_status_text)"
+    printf '  %-18s %s\n' "VNC:" "$(vnc_status_text)"
     printf '  %-18s %s\n' "Time zone:" "$(timedatectl show --property=Timezone --value 2>/dev/null || echo unknown)"
     printf '  %-18s %s\n' "Host name:" "$(hostname)"
     printf '  %-18s %s\n' "IP addresses:" "${addresses:-none}"
@@ -1124,6 +1184,301 @@ cmd_update_browser() {
     flatpak update --system --noninteractive -y "$FLATPAK_APP"
 }
 
+# VNC ---------------------------------------------------------------------------------------------------------
+
+# Shows whether remote control is on and how to connect, turns it on (from the network, or only through an SSH
+# tunnel) or off, or changes its password.
+cmd_vnc() {
+    case ${1:-} in
+        "")
+            require_installed
+            printf 'VNC: %s\n' "$(vnc_status_text)"
+            vnc_connect_hint
+            vnc_check_running
+            ;;
+        on | ssh-only)
+            local allow_mac=no
+            if [[ $1 == on && ${2:-} == --allow-mac ]]; then
+                allow_mac=yes
+            elif [[ -n ${2:-} ]]; then
+                die "Use: kiosk vnc on [--allow-mac], or: kiosk vnc ssh-only"
+            fi
+            require_root vnc
+            require_installed
+            install_vnc
+            if [[ $allow_mac == yes ]] && { (($(wayvnc_version) < 10)) || ! built_wayvnc_is_current; }; then
+                build_wayvnc
+            fi
+            [[ -s $VNC_DIR/password ]] || ask_vnc_password
+            set_setting VNC "$1"
+            set_setting VNC_ALLOW_MAC "$allow_mac"
+            write_vnc_config
+            if [[ $1 == on ]]; then
+                open_vnc_firewall
+            else
+                close_vnc_firewall
+            fi
+            systemctl restart kiosk.service
+            info "VNC is $(vnc_status_text)."
+            vnc_connect_hint
+            ;;
+        off)
+            [[ -z ${2:-} ]] || die "Use: kiosk vnc off"
+            require_root vnc
+            require_installed
+            set_setting VNC off
+            close_vnc_firewall
+            systemctl restart kiosk.service
+            info "VNC is off."
+            ;;
+        password)
+            require_root vnc
+            require_installed
+            [[ -d $VNC_DIR ]] || die "Turn VNC on first: ${SUDO_HINT}kiosk vnc on"
+            can_ask || die "Run this in a terminal, where it can ask for the new password."
+            ask_vnc_password
+            write_vnc_config
+            [[ $(get_setting VNC) =~ ^(on|ssh-only)$ ]] && systemctl restart kiosk.service
+            info "The VNC password is changed."
+            ;;
+        *) die "Use: kiosk vnc on [--allow-mac]|ssh-only|off|password" ;;
+    esac
+}
+
+# Describes the VNC setting in a few words.
+vnc_status_text() {
+    case $(get_setting VNC) in
+        on)
+            printf 'on (port %s, user name kiosk' "$VNC_PORT"
+            [[ $(get_setting VNC_ALLOW_MAC) == yes ]] && printf '; Mac Screen Sharing allowed, unencrypted picture'
+            printf ')'
+            ;;
+        ssh-only) printf 'on, through an SSH tunnel only' ;;
+        *) printf 'off' ;;
+    esac
+}
+
+# Prints the wayvnc Kiosk runs: the one it built, if any, otherwise the distribution's.
+wayvnc_program() {
+    if [[ -x $WAYVNC_BUILD_DIR/bin/wayvnc ]]; then
+        printf '%s' "$WAYVNC_BUILD_DIR/bin/wayvnc"
+    else
+        command -v wayvnc 2>/dev/null || true
+    fi
+}
+
+# Prints wayvnc's version as a number of minor versions (0.9 is 9, 0.10 is 10, 1.0 is 100), or 0.
+wayvnc_version() {
+    local program version
+    program=$(wayvnc_program)
+    [[ -n $program ]] || { echo 0; return; }
+    version=$("$program" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -n 1)
+    if [[ $version =~ ^([0-9]+)\.([0-9]+)$ ]]; then
+        echo $((BASH_REMATCH[1] * 100 + BASH_REMATCH[2]))
+    else
+        echo 0
+    fi
+}
+
+# True unless Kiosk built a wayvnc earlier than the release it builds now.
+built_wayvnc_is_current() {
+    [[ -x $WAYVNC_BUILD_DIR/bin/wayvnc ]] || return 0
+    local wanted=${WAYVNC_SOURCES[0]}
+    wanted=${wanted#wayvnc }
+    "$WAYVNC_BUILD_DIR/bin/wayvnc" --version 2>/dev/null | grep -q "wayvnc: ${wanted%% *}-"
+}
+
+# Builds wayvnc 0.10 (for the Mac's Screen Sharing) from its source on GitHub, at the commits in WAYVNC_SOURCES,
+# into WAYVNC_BUILD_DIR. neatvnc and aml are built into it, so it's one program. Takes a minute or two.
+build_wayvnc() {
+    local packages dir entry name tag commit target
+    detect_distro
+    packages=$(wayvnc_build_packages)
+    [[ -n $packages ]] ||
+        die "The Mac's Screen Sharing needs wayvnc 0.10, and this $DISTRO_NAME has an older one that Kiosk can't replace here. Use RealVNC Viewer or TigerVNC on the Mac with: ${SUDO_HINT}kiosk vnc on"
+    info "Building wayvnc 0.10 for the Mac's Screen Sharing (this $DISTRO_NAME has an older one; a minute or two)"
+    [[ ${KIOSK_LISTS_REFRESHED:-no} == yes ]] || quietly pkg_refresh || true
+    # shellcheck disable=SC2086 # One package name per word.
+    pkg_install $packages
+    dir=$(mktemp -d)
+    # shellcheck disable=SC2064 # The folder is known now and must be removed whatever happens later.
+    trap "rm -rf '$dir'" EXIT
+    for entry in "${WAYVNC_SOURCES[@]}"; do
+        read -r name tag commit <<<"$entry"
+        target=$dir/wayvnc
+        [[ $name == wayvnc ]] || target=$dir/wayvnc/subprojects/$name
+        quietly git -c advice.detachedHead=false clone --depth 1 --branch "$tag" "https://github.com/any1/$name" \
+            "$target" || die "Couldn't download $name $tag from GitHub. Check the network and try again."
+        [[ $(git -C "$target" rev-parse HEAD) == "$commit" ]] ||
+            die "$name $tag on GitHub isn't the expected version, so it wasn't built."
+    done
+    if ! { quietly meson setup "$dir/build" "$dir/wayvnc" --prefix="$WAYVNC_BUILD_DIR" --buildtype=release \
+        --default-library=static -Dman-pages=disabled -Dtests=false -Dpam=disabled &&
+        quietly ninja -C "$dir/build" &&
+        quietly meson install -C "$dir/build" --skip-subprojects --destdir "$dir/stage"; }; then
+        die "Couldn't build wayvnc. The details are in $INSTALL_LOG."
+    fi
+    rm -rf "$WAYVNC_BUILD_DIR"
+    mv "$dir/stage$WAYVNC_BUILD_DIR" "$WAYVNC_BUILD_DIR"
+    chmod -R go-w "$WAYVNC_BUILD_DIR"
+    info "Built $("$WAYVNC_BUILD_DIR/bin/wayvnc" --version 2>/dev/null | head -n 1)"
+}
+
+# When VNC is on, says whether wayvnc is really listening; if not, why (its recent messages, when readable).
+vnc_check_running() {
+    [[ $(get_setting VNC) =~ ^(on|ssh-only)$ ]] || return 0
+    if ss -ltnH "sport = :$VNC_PORT" 2>/dev/null | grep -q .; then
+        echo "wayvnc is listening on port $VNC_PORT: $(ss -ltnH "sport = :$VNC_PORT" | awk '{ print $4 }' | paste -sd ' ')"
+        local program built=""
+        program=$(wayvnc_program)
+        [[ $program == "$WAYVNC_BUILD_DIR"/* ]] && built=", built by Kiosk"
+        echo "($("$program" --version 2>/dev/null | head -n 1)$built)"
+        return 0
+    fi
+    warn "wayvnc isn't listening on port $VNC_PORT."
+    if ! systemctl is-active --quiet kiosk.service; then
+        echo "The browser isn't running (the screen may be off), and VNC runs with it."
+        return 0
+    fi
+    echo "Its recent messages:"
+    journalctl -u kiosk.service -n 300 --no-pager 2>/dev/null | grep -iE 'wayvnc|vnc|neatvnc' | tail -n 10 ||
+        echo "  (none found; run with ${SUDO_HINT}to see the log)"
+}
+
+# Says how to connect a VNC viewer, when VNC is on.
+vnc_connect_hint() {
+    local address
+    address=$(hostname -I 2>/dev/null | awk '{ print $1 }')
+    address=${address:-<this computer>}
+    case $(get_setting VNC) in
+        on)
+            echo "Connect a VNC viewer (such as TigerVNC or RealVNC Viewer) to $address:$VNC_PORT, with the user name"
+            echo "kiosk and the VNC password. The viewer asks you to trust this kiosk's certificate the first time."
+            if [[ $(get_setting VNC_ALLOW_MAC) == yes ]]; then
+                echo "On a Mac, Screen Sharing works too: vnc://$address (its picture and typing aren't encrypted)."
+            fi
+            ;;
+        ssh-only)
+            echo "On your computer: ssh -L 5901:localhost:$VNC_PORT <you>@$address"
+            echo "Then connect a VNC viewer to localhost:5901 (on a Mac, Screen Sharing works: vnc://localhost:5901),"
+            echo "with the user name kiosk and the VNC password."
+            ;;
+    esac
+}
+
+# Installs wayvnc (and openssl for its keys), and makes the folder for its settings and keys. Safe to run again:
+# the keys are made once.
+install_vnc() {
+    if ! command -v wayvnc >/dev/null 2>&1 || ! command -v openssl >/dev/null 2>&1; then
+        detect_distro
+        [[ ${KIOSK_LISTS_REFRESHED:-no} == yes ]] || quietly pkg_refresh || true
+        pkg_install wayvnc openssl
+    fi
+    mkdir -p "$VNC_DIR"
+    chown "root:$KIOSK_USER" "$VNC_DIR"
+    chmod 750 "$VNC_DIR"
+    if [[ ! -s $VNC_DIR/tls_key.pem || ! -s $VNC_DIR/tls_cert.pem ]]; then
+        quietly openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:secp384r1 -sha384 -days 3650 -nodes \
+            -keyout "$VNC_DIR/tls_key.pem" -out "$VNC_DIR/tls_cert.pem" -subj "/CN=$(hostname)" \
+            -addext "subjectAltName=DNS:$(hostname),DNS:localhost,IP:127.0.0.1" ||
+            die "Couldn't make the VNC encryption key."
+    fi
+    if [[ ! -s $VNC_DIR/rsa_key.pem ]]; then
+        # wayvnc reads the older (PKCS#1) form; OpenSSL 3 makes it only when asked.
+        quietly openssl genrsa -traditional -out "$VNC_DIR/rsa_key.pem" 2048 ||
+            quietly openssl genrsa -out "$VNC_DIR/rsa_key.pem" 2048 ||
+            die "Couldn't make the VNC encryption key."
+    fi
+    chown "root:$KIOSK_USER" "$VNC_DIR"/*.pem
+    chmod 640 "$VNC_DIR"/*.pem
+}
+
+# Asks for a new VNC password (twice, without showing it) and saves it. With no one to ask, it makes one and
+# shows it.
+ask_vnc_password() {
+    local first second
+    if ! can_ask; then
+        first=$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 12)
+        info "VNC password: $first (change it with: ${SUDO_HINT}kiosk vnc password)"
+    else
+        while true; do
+            read -r -s -p "VNC password (8 or more characters): " first </dev/tty || true
+            echo >&2
+            if ((${#first} < 8)); then
+                warn "The password must have 8 or more characters."
+                continue
+            fi
+            read -r -s -p "The same password again: " second </dev/tty || true
+            echo >&2
+            [[ $first == "$second" ]] && break
+            warn "The passwords didn't match."
+        done
+    fi
+    mkdir -p "$VNC_DIR"
+    (umask 077 && printf '%s\n' "$first" >"$VNC_DIR/password")
+}
+
+# Writes wayvnc's settings from the VNC setting and the saved password. It always asks for the password and
+# encrypts the connection: TLS (TigerVNC and other VeNCrypt viewers) or RSA-AES (RealVNC Viewer and others).
+# Through an SSH tunnel (ssh-only), SSH already encrypts it, so the Mac's Screen Sharing may sign in too, with
+# Apple's own method (it protects the password but not the picture). "kiosk vnc on --allow-mac" allows that
+# method from the network as well, for those who accept an unencrypted picture.
+write_vnc_config() {
+    local address=0.0.0.0 minor allow_mac=no
+    [[ $(get_setting VNC) == ssh-only ]] && address=127.0.0.1
+    [[ $address == 127.0.0.1 || $(get_setting VNC_ALLOW_MAC) == yes ]] && allow_mac=yes
+    minor=$(wayvnc_version)
+    {
+        echo "# Works In All Things Kiosk: written by \"kiosk vnc\"; change VNC with the kiosk command, not here."
+        echo "use_relative_paths=true"
+        echo "address=$address"
+        echo "port=$VNC_PORT"
+        echo "enable_auth=true"
+        echo "username=kiosk"
+        echo "password=$(head -n 1 "$VNC_DIR/password")"
+        echo "private_key_file=tls_key.pem"
+        echo "certificate_file=tls_cert.pem"
+        # RSA-AES arrived in wayvnc 0.7; older versions offer TLS only.
+        ((minor >= 7)) && echo "rsa_private_key_file=rsa_key.pem"
+        # The Mac's Screen Sharing: Apple's sign-in (relax_encryption), and from wayvnc 0.10 the old VNC password
+        # (DES, allow_broken_crypto), which Screen Sharing needs; it checks only the password's first 8 characters.
+        # Neither encrypts the picture.
+        if [[ $allow_mac == yes ]]; then
+            ((minor >= 7)) && echo "relax_encryption=true"
+            ((minor >= 10)) && echo "allow_broken_crypto=true"
+        fi
+    } >"$VNC_DIR/config.new"
+    chown "root:$KIOSK_USER" "$VNC_DIR/config.new"
+    chmod 640 "$VNC_DIR/config.new"
+    mv "$VNC_DIR/config.new" "$VNC_DIR/config"
+}
+
+# Opens the VNC port in the firewall when one is on (firewalld, as on Fedora, or ufw), and notes it so off and
+# uninstall close it again. A port someone else opened is left alone.
+open_vnc_firewall() {
+    if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+        firewall-cmd --permanent --query-service=vnc-server >/dev/null 2>&1 && return 0
+        quietly firewall-cmd --permanent --add-service=vnc-server && quietly firewall-cmd --reload &&
+            echo firewalld >"$VNC_DIR/firewall"
+    elif command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q '^Status: active'; then
+        ufw status 2>/dev/null | grep -qE "^$VNC_PORT/tcp +ALLOW" && return 0
+        quietly ufw allow "$VNC_PORT/tcp" && echo ufw >"$VNC_DIR/firewall"
+    fi
+    return 0
+}
+
+# Closes the VNC port in the firewall, if Kiosk opened it.
+close_vnc_firewall() {
+    case $(cat "$VNC_DIR/firewall" 2>/dev/null) in
+        firewalld)
+            quietly firewall-cmd --permanent --remove-service=vnc-server || true
+            quietly firewall-cmd --reload || true
+            ;;
+        ufw) quietly ufw delete allow "$VNC_PORT/tcp" || true ;;
+    esac
+    rm -f "$VNC_DIR/firewall"
+}
+
 # Uninstall ---------------------------------------------------------------------------------------------------
 
 # Removes everything Kiosk added and puts the computer back as it was. Packages are left installed, because
@@ -1147,6 +1502,8 @@ cmd_uninstall() {
     systemctl daemon-reload
     blank_screen 0
     boot_quiet_off
+    remove_browser_policy
+    close_vnc_firewall
 
     display_manager=$(recall DISPLAY_MANAGER)
     getty=$(recall GETTY_TTY1)
@@ -1167,7 +1524,7 @@ cmd_uninstall() {
         userdel "$KIOSK_USER" || warn "Couldn't remove the $KIOSK_USER user."
     fi
     rm -rf "$KIOSK_HOME" "$CONFIG_DIR" /etc/pam.d/kiosk "$COMMAND_LINK" "$INSTALL_DIR" "$INSTALL_LOG" \
-        "$SCREEN_OFF_FLAG" "$LOCK_FILE"
+        "$SCREEN_OFF_FLAG" "$LOCK_FILE" "$WAYVNC_BUILD_DIR"
 
     info "Kiosk is removed. The packages it installed (such as cage and Chromium) are still there."
     [[ -z $display_manager ]] || echo "The desktop ($display_manager) starts again after a restart."
@@ -1201,6 +1558,11 @@ cmd_help() {
     help_line "${s}kiosk restart" "Restart the browser"
     help_line "${s}kiosk boot quiet|normal" "Hide the start-up text, or show it again"
     help_line "${s}kiosk boot logo <file.png>|default" "Your logo at start-up (or an https address); default: ours"
+    help_line "kiosk vnc" "Show whether remote control (VNC) is on, and how to connect"
+    help_line "${s}kiosk vnc on|off" "Allow control of the screen from the network over VNC, or stop it"
+    help_line "${s}kiosk vnc on --allow-mac" "Also allow the Mac's Screen Sharing (its picture isn't encrypted)"
+    help_line "${s}kiosk vnc ssh-only" "Allow VNC only through an SSH tunnel"
+    help_line "${s}kiosk vnc password" "Change the VNC password"
     help_line "kiosk status" "Show what the kiosk is doing"
     help_line "${s}kiosk logs" "Show recent messages"
     help_line "${s}kiosk update [branch or tag]" "Update Kiosk to the latest release (or a branch or tag)"
@@ -1231,7 +1593,7 @@ is_locking_command() {
     case $1 in
         install | rotate | resolution | restart-time | restart | update | uninstall | manage | unmanage) return 0 ;;
         boot) [[ -n ${2:-} ]] ;;
-        url) [[ -n ${2:-} ]] ;;
+        url | vnc) [[ -n ${2:-} ]] ;;
         screen) [[ ${2:-} != check ]] ;;
         *) return 1 ;;
     esac
@@ -1252,6 +1614,7 @@ main() {
         restart-time) cmd_restart_time "$@" ;;
         restart) cmd_restart ;;
         boot) cmd_boot "$@" ;;
+        vnc) cmd_vnc "$@" ;;
         status) cmd_status ;;
         logs) cmd_logs "$@" ;;
         update) cmd_update "$@" ;;
@@ -1259,6 +1622,11 @@ main() {
         manage) cmd_manage "$@" ;;
         unmanage) cmd_unmanage ;;
         heartbeat) cmd_heartbeat ;;
+        browser-policy)
+            # Used by kiosk.service before the browser starts; not for people.
+            require_root browser-policy
+            write_browser_policy
+            ;;
         uninstall) cmd_uninstall "$@" ;;
         version | --version) echo "$KIOSK_VERSION" ;;
         help | --help | -h) cmd_help ;;

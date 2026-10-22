@@ -358,3 +358,15 @@ rebuild_initramfs() {
         dracut -f
     fi
 }
+
+# Prints the packages Kiosk needs to build wayvnc itself (when the distribution's is too old for the Mac's Screen
+# Sharing), one per line, or nothing where it doesn't know how to build it.
+wayvnc_build_packages() {
+    case $DISTRO_FAMILY in
+        apt)
+            printf '%s\n' git meson ninja-build gcc pkg-config libwayland-dev wayland-protocols libpixman-1-dev \
+                libxkbcommon-dev libgnutls28-dev nettle-dev libgmp-dev libjpeg-dev libdrm-dev libgbm-dev \
+                libjansson-dev zlib1g-dev
+            ;;
+    esac
+}

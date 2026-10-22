@@ -23,6 +23,7 @@ Write each result in the tables at the end: ✓, ✗ (with a note), or – for n
 | 2.1 | Watch a full playlist. | Pictures, Lava and transitions look right. |
 | 2.2 | Watch the video slide. | Smooth, with sound from the TV. Check CPU with `top` over SSH or on Ctrl+Alt+F2: under about 50% for 1080p. |
 | 2.3 | Signage offline tests O1–O11 (rocksign TESTING.md section 10). | As described there. O5 (restart while offline) should play. |
+| 2.4 | Show an address on the public internet whose page loads something from a `192.168.x.x` or `10.x` address (for example a Signage Web Page slide pointing at a device on your network). Then `sudo cat /var/lib/flatpak/extension/org.chromium.Chromium.Extension.kiosk/*/1/policies/managed/kiosk.json` (distribution's Chromium: `/etc/chromium/policies/managed/works-in-all-things-kiosk.json`). | No *wants to access other devices on your local network* box on the screen. The file lists the address's `https://host`. After `sudo kiosk url <another address>` it lists the new one. |
 
 ## 3. Recovery
 
@@ -51,7 +52,7 @@ Write each result in the tables at the end: ✓, ✗ (with a note), or – for n
 
 | # | Do this | You should see |
 |---|---|---|
-| 5.1 | `sudo kiosk uninstall`, then restart. | The normal console login (or the desktop's login screen) comes back. `/etc/kiosk`, `/var/lib/kiosk`, `/usr/local/lib/kiosk` and the `kiosk` user are gone. |
+| 5.1 | `sudo kiosk uninstall`, then restart. | The normal console login (or the desktop's login screen) comes back. `/etc/kiosk`, `/var/lib/kiosk`, `/usr/local/lib/kiosk`, the browser policy from 2.4 and the `kiosk` user are gone. |
 | 5.2 | Install again. | It works as in section 1. |
 
 ## 6. A week untouched
@@ -95,6 +96,25 @@ On a virtual machine, watch the start-up in its console. Check each after a rest
 | 8.9 | `sudo kiosk uninstall`, then restart. | The start-up is as it was before Kiosk. `/etc/default/grub.d/90-kiosk.cfg` (Debian, Ubuntu), `/usr/share/plymouth/themes/kiosk` and `/etc/systemd/system/plymouth-quit.service.d/90-kiosk.conf` are gone; on a Raspberry Pi, `cmdline.txt` is as it was and `config.txt` has no Kiosk lines. |
 | 8.10 | Install without questions with `--quiet-boot no`, and a managed install (7.1). | The first shows the start-up text (*Start-up: start-up text shown, …*); the managed one is quiet. Both show the logo while the browser starts. |
 
+## 9. Remote control (VNC)
+
+From another computer on the same network, with a VNC viewer: TigerVNC, and RealVNC Viewer if you have it.
+
+| # | Do this | You should see |
+|---|---|---|
+| 9.1 | `kiosk vnc` | *VNC: off*. |
+| 9.2 | `sudo kiosk vnc on`. Type a 5-character password, then two different ones, then a good one twice. | It installs wayvnc, refuses the short password and the mismatch, then *VNC is on (port 5900, user name kiosk)* and how to connect. The browser restarts. |
+| 9.3 | Connect the viewer to `<kiosk IP>:5900`, user `kiosk`, the password. | It asks to trust the certificate (TigerVNC) or shows the key (RealVNC), then shows the screen. Moving the mouse moves a pointer on the TV; clicking and typing work in the page. |
+| 9.4 | Connect with a wrong password. | Refused. |
+| 9.5 | `sudo kiosk vnc password`, set a new one. | The old password is refused, the new one works. |
+| 9.6 | `sudo kiosk vnc ssh-only`. Try 9.3 again, then `ssh -L 5901:localhost:5900 <you>@<kiosk IP>` and connect the viewer to `localhost:5901`. | Direct: no connection. Through the tunnel: it works. |
+| 9.6a | On a Mac, with the tunnel from 9.6: Finder ▸ **Go ▸ Connect to Server**, `vnc://localhost:5901`, user `kiosk` and the VNC password. Then try `vnc://<kiosk IP>` after `sudo kiosk vnc on`. | Through the tunnel, Screen Sharing shows and controls the screen. Directly (with `on`), Screen Sharing can't sign in. |
+| 9.6b | Note `wayvnc --version`. `sudo kiosk vnc on --allow-mac` (on Ubuntu 26.04, with wayvnc 0.9, it says *Building wayvnc 0.10* and *Built wayvnc: v0.10.2*; run it again: no rebuild). `kiosk vnc` says which wayvnc runs. Then `vnc://<kiosk IP>` in Screen Sharing, with the VNC password. Then `sudo kiosk vnc on` and try again. `sudo kiosk vnc on --mac` too. | With `--allow-mac` it signs in and works, and `kiosk vnc` says *Mac Screen Sharing allowed*. After plain `on`, it can't sign in. `--mac` is refused with how to use the command. |
+| 9.7 | `sudo kiosk screen off`, then `sudo kiosk screen on`. | VNC drops while the screen is off and works again once it's back. |
+| 9.8 | `sudo kiosk vnc off`, then `sudo reboot`. | No connection, before and after the restart. *VNC: off* in `kiosk status`. |
+| 9.9 | On Fedora (firewalld on): `sudo kiosk vnc on`, `sudo firewall-cmd --list-services`, then `sudo kiosk vnc off` and list again. | `vnc-server` is listed while VNC is on, and gone after off. (On Ubuntu with `sudo ufw enable` first: `sudo ufw status` shows `5900/tcp` the same way.) |
+| 9.10 | VNC on, then `sudo kiosk uninstall`. | `/etc/kiosk/vnc` and `/usr/local/lib/kiosk-wayvnc` are gone, and so is any firewall port from 9.9. |
+
 ## Results
 
 Fill in one column per computer and distribution (for example *N100 mini PC, Debian 13*).
@@ -114,3 +134,5 @@ Fill in one column per computer and distribution (for example *N100 mini PC, Deb
 | 6.1 A week untouched | ✓ | Running since 2026-10-21 | | |
 | 7.1–7.11 Managed by Rock | ✓ | ✓ | | |
 | 8.1–8.10 Start-up screen | ✓ (1.1.0) | ✓ (1.1.0) | | |
+| 2.4 Local network question | ✓ (1.2.0) | | | |
+| 9.1–9.10 Remote control (VNC) | ✓ (1.2.0; Screen Sharing from a Mac over VPN, wayvnc 0.10.2 built by Kiosk) | | | |
