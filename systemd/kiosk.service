@@ -23,6 +23,8 @@ UtmpMode=user
 Environment=XDG_SESSION_TYPE=wayland
 # Stays off during the screen's off hours, so the nightly restart doesn't turn it back on.
 ExecCondition=+/usr/local/bin/kiosk screen check
+# Lets the address's own site reach devices on the local network without Chromium asking (see "kiosk").
+ExecStartPre=-+/usr/local/bin/kiosk browser-policy
 ExecStart=/usr/local/lib/kiosk/lib/start
 Restart=always
 RestartSec=3

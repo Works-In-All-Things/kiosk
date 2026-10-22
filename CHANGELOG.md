@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **No "access other devices on your local network" question.** Chromium now asks before a site reaches devices on
+  the local network, and nobody can answer on a TV. Kiosk gives the kiosk's own site (the address's
+  `https://host`) that permission with a Chromium policy, written each time the browser starts so it follows the
+  address. Other sites still get the question. `kiosk uninstall` removes the policy.
+
 ## 1.1.0
 
 - **A start-up logo.** While the computer starts, the screen shows the Works In All Things logo on black, and it

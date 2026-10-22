@@ -171,6 +171,11 @@ fit.
   either way.
 - There are no first-run screens, "Restore pages?" bubbles, translate bars or update nags, and videos play with
   sound without a click.
+- **Local network:** Chromium asks before a site reaches devices on the local network (*wants to access other
+  devices on your local network*). Kiosk answers for the kiosk's own site with a Chromium policy, written each time
+  the browser starts, so a page that loads something from your network never stops at that question. Other sites
+  still get it. The policy is in `/var/lib/flatpak/extension/org.chromium.Chromium.Extension.kiosk` (Chromium from
+  Flathub) or `/etc/chromium/policies/managed/works-in-all-things-kiosk.json` (the distribution's Chromium).
 - Settings are in `/etc/kiosk/kiosk.conf`. After editing it by hand, run `sudo kiosk restart`.
 - **Screen off:** stops the browser and blanks the screen, which sends most TVs and monitors to sleep. A nightly
   restart during the off hours keeps the screen off.
@@ -187,8 +192,8 @@ fit.
 sudo kiosk uninstall
 ```
 
-It removes Kiosk's files, settings, timers and the `kiosk` user, puts the start-up text and screen back as they
-were, turns the console login (and any desktop login screen) back on, and leaves the installed packages, such as
+It removes Kiosk's files, settings, timers, browser policy and the `kiosk` user, puts the start-up text and screen
+back as they were, turns the console login (and any desktop login screen) back on, and leaves the installed packages, such as
 cage, Chromium and Plymouth, in place.
 
 ## Troubleshooting

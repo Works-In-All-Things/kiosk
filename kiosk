@@ -34,6 +34,10 @@ CUSTOM_LOGO=$CONFIG_DIR/boot-logo.png
 BOOT_STATE=$CONFIG_DIR/boot-state
 PLYMOUTH_THEME_DIR=/usr/share/plymouth/themes/kiosk
 PLYMOUTH_QUIT_DROPIN=$UNIT_DIR/plymouth-quit.service.d/90-kiosk.conf
+# Chromium policies Kiosk writes (see write_browser_policy): the distribution's Chromium reads /etc/chromium, and
+# Flathub's Chromium reads its own extension folder (Kiosk's whole folder, so uninstall removes it).
+NATIVE_POLICY_FILE=/etc/chromium/policies/managed/works-in-all-things-kiosk.json
+FLATPAK_POLICY_EXTENSION=/var/lib/flatpak/extension/$FLATPAK_APP.Extension.kiosk
 
 SOURCE_DIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
 KIOSK_VERSION=$(cat "$SOURCE_DIR/VERSION" 2>/dev/null || echo unknown)
@@ -548,6 +552,44 @@ install_browser() {
     quietly flatpak install --system --noninteractive -y flathub "$FLATPAK_APP" ||
         die "Couldn't install Chromium from Flathub. Check the network and run the installer again."
     KIOSK_BROWSER=flatpak
+}
+
+# Writes Chromium's policy for the kiosk's address: its site may reach devices on the local network without
+# Chromium's "wants to access other devices on your local network" question, which nobody can answer on a TV.
+# Other sites still get the question. kiosk.service runs this (as root) each time the browser starts, so the
+# policy follows the address. It never fails: without the policy the page still loads.
+write_browser_policy() {
+    local url origin policy_file arch
+    url=$(get_setting URL)
+    origin=""
+    # Only a plain scheme://host[:port], so nothing in the address can break the JSON.
+    [[ $url =~ ^(https?://[A-Za-z0-9.:_-]+|https?://\[[0-9A-Fa-f:.]+\](:[0-9]+)?) ]] && origin=${BASH_REMATCH[1]}
+
+    if [[ $(get_setting BROWSER) == flatpak ]]; then
+        rm -f "$NATIVE_POLICY_FILE"
+        arch=$(flatpak --default-arch 2>/dev/null) || return 0
+        policy_file=$FLATPAK_POLICY_EXTENSION/$arch/1/policies/managed/kiosk.json
+    else
+        rm -rf "$FLATPAK_POLICY_EXTENSION"
+        policy_file=$NATIVE_POLICY_FILE
+    fi
+
+    if [[ -z $origin ]]; then
+        rm -f "$policy_file"
+        return 0
+    fi
+    if ! { mkdir -p "$(dirname "$policy_file")" &&
+        printf '{\n  "LocalNetworkAccessAllowedForUrls": ["%s"]\n}\n' "$origin" >"$policy_file.new" &&
+        chmod 644 "$policy_file.new" &&
+        mv "$policy_file.new" "$policy_file"; }; then
+        warn "Couldn't write the browser policy ($policy_file)."
+    fi
+}
+
+# Removes the browser policy Kiosk wrote.
+remove_browser_policy() {
+    rm -rf "$FLATPAK_POLICY_EXTENSION"
+    rm -f "$NATIVE_POLICY_FILE"
 }
 
 # Makes the kiosk user that the browser runs as. It has no password and can't log in.
@@ -1147,6 +1189,7 @@ cmd_uninstall() {
     systemctl daemon-reload
     blank_screen 0
     boot_quiet_off
+    remove_browser_policy
 
     display_manager=$(recall DISPLAY_MANAGER)
     getty=$(recall GETTY_TTY1)
@@ -1259,6 +1302,11 @@ main() {
         manage) cmd_manage "$@" ;;
         unmanage) cmd_unmanage ;;
         heartbeat) cmd_heartbeat ;;
+        browser-policy)
+            # Used by kiosk.service before the browser starts; not for people.
+            require_root browser-policy
+            write_browser_policy
+            ;;
         uninstall) cmd_uninstall "$@" ;;
         version | --version) echo "$KIOSK_VERSION" ;;
         help | --help | -h) cmd_help ;;

@@ -23,6 +23,7 @@ Write each result in the tables at the end: ✓, ✗ (with a note), or – for n
 | 2.1 | Watch a full playlist. | Pictures, Lava and transitions look right. |
 | 2.2 | Watch the video slide. | Smooth, with sound from the TV. Check CPU with `top` over SSH or on Ctrl+Alt+F2: under about 50% for 1080p. |
 | 2.3 | Signage offline tests O1–O11 (rocksign TESTING.md section 10). | As described there. O5 (restart while offline) should play. |
+| 2.4 | Show an address on the public internet whose page loads something from a `192.168.x.x` or `10.x` address (for example a Signage Web Page slide pointing at a device on your network). Then `sudo cat /var/lib/flatpak/extension/org.chromium.Chromium.Extension.kiosk/*/1/policies/managed/kiosk.json` (distribution's Chromium: `/etc/chromium/policies/managed/works-in-all-things-kiosk.json`). | No *wants to access other devices on your local network* box on the screen. The file lists the address's `https://host`. After `sudo kiosk url <another address>` it lists the new one. |
 
 ## 3. Recovery
 
@@ -51,7 +52,7 @@ Write each result in the tables at the end: ✓, ✗ (with a note), or – for n
 
 | # | Do this | You should see |
 |---|---|---|
-| 5.1 | `sudo kiosk uninstall`, then restart. | The normal console login (or the desktop's login screen) comes back. `/etc/kiosk`, `/var/lib/kiosk`, `/usr/local/lib/kiosk` and the `kiosk` user are gone. |
+| 5.1 | `sudo kiosk uninstall`, then restart. | The normal console login (or the desktop's login screen) comes back. `/etc/kiosk`, `/var/lib/kiosk`, `/usr/local/lib/kiosk`, the browser policy from 2.4 and the `kiosk` user are gone. |
 | 5.2 | Install again. | It works as in section 1. |
 
 ## 6. A week untouched
