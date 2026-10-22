@@ -1186,6 +1186,7 @@ cmd_vnc() {
             require_installed
             printf 'VNC: %s\n' "$(vnc_status_text)"
             vnc_connect_hint
+            vnc_check_running
             ;;
         on | ssh-only)
             local allow_mac=no
@@ -1244,6 +1245,23 @@ vnc_status_text() {
         ssh-only) printf 'on, through an SSH tunnel only' ;;
         *) printf 'off' ;;
     esac
+}
+
+# When VNC is on, says whether wayvnc is really listening; if not, why (its recent messages, when readable).
+vnc_check_running() {
+    [[ $(get_setting VNC) =~ ^(on|ssh-only)$ ]] || return 0
+    if ss -ltnH "sport = :$VNC_PORT" 2>/dev/null | grep -q .; then
+        echo "wayvnc is listening on port $VNC_PORT: $(ss -ltnH "sport = :$VNC_PORT" | awk '{ print $4 }' | paste -sd ' ')"
+        return 0
+    fi
+    warn "wayvnc isn't listening on port $VNC_PORT."
+    if ! systemctl is-active --quiet kiosk.service; then
+        echo "The browser isn't running (the screen may be off), and VNC runs with it."
+        return 0
+    fi
+    echo "Its recent messages:"
+    journalctl -u kiosk.service -n 300 --no-pager 2>/dev/null | grep -iE 'wayvnc|vnc|neatvnc' | tail -n 10 ||
+        echo "  (none found; run with ${SUDO_HINT}to see the log)"
 }
 
 # Says how to connect a VNC viewer, when VNC is on.
