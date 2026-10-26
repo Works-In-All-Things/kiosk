@@ -300,6 +300,9 @@ check_system() {
         *) die "Kiosk needs a 64-bit Intel/AMD or ARM computer (this one is $(uname -m))." ;;
     esac
     detect_distro
+    if ! compgen -G '/dev/dri/card*' >/dev/null; then
+        warn "This computer has no graphics device (/dev/dri/card*), so the screen will stay black. Its graphics may need a driver; in a virtual machine, give it a display (VirtualBox: VMSVGA with 3D acceleration; Proxmox: Default or VirtIO-GPU)."
+    fi
 }
 
 # Install -----------------------------------------------------------------------------------------------------
@@ -1077,7 +1080,7 @@ cmd_status() {
     restart_time=$(get_setting RESTART_TIME)
     printf 'Kiosk %s on %s\n\n' "$KIOSK_VERSION" "$(. /etc/os-release && echo "$PRETTY_NAME")"
     printf '  %-18s %s\n' "Showing:" "$(get_setting URL)"
-    printf '  %-18s %s\n' "Browser:" "$(systemctl is-active --quiet kiosk.service && echo running || echo "not running ($state)")"
+    printf '  %-18s %s\n' "Browser:" "$(browser_status_text "$state")"
     printf '  %-18s %s\n' "Browser type:" "$(get_setting BROWSER)"
     printf '  %-18s %s\n' "Screen:" "$(screen_schedule_text)"
     printf '  %-18s %s\n' "Rotation:" "$(get_setting ROTATION)"
@@ -1094,9 +1097,40 @@ cmd_status() {
     echo "Recent messages: ${SUDO_HINT}kiosk logs"
 }
 
+# Describes whether the browser is running, given kiosk.service's state: "running", with a note when the display
+# draws without graphics acceleration (see lib/start), or why it isn't running.
+browser_status_text() {
+    local state=$1 restarts note=$KIOSK_HOME/software-drawing boot_id
+    boot_id=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || true)
+    if [[ $state == active ]]; then
+        if [[ -n $boot_id && -r $note && $(<"$note") == "$boot_id" ]]; then
+            echo "running, drawing without graphics acceleration (in VirtualBox, turn on 3D acceleration)"
+        else
+            echo running
+        fi
+        return
+    fi
+    if screen_should_be_off; then
+        echo "not running (the screen is off)"
+        return
+    fi
+    restarts=$(systemctl show --property=NRestarts --value kiosk.service 2>/dev/null || echo 0)
+    if [[ $restarts =~ ^[0-9]+$ ]] && ((restarts >= 3)); then
+        echo "not starting: it has stopped $restarts times (see ${SUDO_HINT}kiosk logs)"
+    else
+        echo "not running ($state)"
+    fi
+}
+
 # Shows the kiosk's recent log messages.
 cmd_logs() {
-    journalctl -u kiosk.service -u kiosk-heartbeat.service -n "${1:-100}" --no-pager
+    local uid
+    uid=$(id -u "$KIOSK_USER" 2>/dev/null || echo -1)
+    # The start script's messages (with cage's and the browser's) are matched by name too: when a program exits at
+    # once, the journal may not link its messages to kiosk.service.
+    journalctl -n "${1:-100}" --no-pager \
+        _SYSTEMD_UNIT=kiosk.service + UNIT=kiosk.service + _SYSTEMD_UNIT=kiosk-heartbeat.service + \
+        UNIT=kiosk-heartbeat.service + SYSLOG_IDENTIFIER=start _UID="$uid"
 }
 
 # Updates -----------------------------------------------------------------------------------------------------

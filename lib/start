@@ -43,4 +43,33 @@ if [[ $ROTATION != 0 ]] && cage -h 2>&1 | grep -qE '^[[:space:]]*-r[[:space:]]';
     export KIOSK_ROTATED_BY_CAGE=yes
 fi
 
-exec cage "${cage_options[@]}" -- /usr/local/lib/kiosk/lib/session
+# Software drawing: some computers can't give cage graphics acceleration (a VirtualBox VM without 3D acceleration,
+# or a graphics chip without a working driver), and then cage can't start at all. When that happened earlier in
+# this boot, cage draws in software instead (WLR_RENDERER=pixman): the page shows, though video is less smooth.
+# The note holds the boot's ID, so each boot tries acceleration again first.
+software_note=${HOME:-/var/lib/kiosk}/software-drawing
+boot_id=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || true)
+if [[ -n $boot_id && -r $software_note && $(<"$software_note") == "$boot_id" ]]; then
+    export WLR_RENDERER=pixman
+    echo "Drawing without graphics acceleration, because the display couldn't start with it. Video may not be smooth. In VirtualBox, turn on 3D acceleration (Settings ▸ Display)." >&2
+fi
+
+# cage runs as a child, not in this script's place, so its messages stay with kiosk.service in the log and this
+# script can tell why it stopped.
+# Its error output is also copied to a file (through tee) to check afterwards; the pipeline ends only when both have.
+errors=$(mktemp)
+trap 'rm -f "$errors"' EXIT
+trap 'exit 143' TERM
+{ cage "${cage_options[@]}" -- /usr/local/lib/kiosk/lib/session 2>&1 1>&3 | tee "$errors" >&2; } 3>&1
+status=${PIPESTATUS[0]}
+
+if ((status != 0)); then
+    if [[ -z ${WLR_RENDERER:-} && -n $boot_id ]] &&
+        grep -qE 'Unable to create the wlroots renderer|Could not initialize renderer' "$errors"; then
+        printf '%s\n' "$boot_id" >"$software_note"
+        echo "The display couldn't start with graphics acceleration; it starts again without it." >&2
+    else
+        echo "The display stopped (code $status). The messages above say why." >&2
+    fi
+fi
+exit "$status"

@@ -211,6 +211,8 @@ fit.
   the first screen. A systemd service (`kiosk.service`) starts it at boot and again within seconds if it closes.
 - Chromium runs as a `kiosk` user that has no password and can't log in. Its data is kept in `/var/lib/kiosk`, so
   Signage's offline storage survives restarts: a TV that's turned on with no network still plays.
+- If the display can't start with graphics acceleration, it starts again drawing in software (see
+  *Troubleshooting*). Each restart of the computer tries acceleration first.
 - At start-up it waits up to 90 seconds for the address to answer with a page (with the logo on the screen), so a
   server that's restarting, which answers with an error meanwhile, has time to be ready. Then it opens it
   either way.
@@ -248,6 +250,11 @@ cage, Chromium and Plymouth, in place.
   `su -` to become root, then run the command without `sudo`. To use sudo instead, install it as root with
   `apt install sudo`, add yourself with `usermod -aG sudo yourname`, and log in again.
 - **Black screen:** run `kiosk status` and `sudo kiosk logs`. Check the address opens in a normal browser.
+- **VirtualBox:** give the VM **Settings ▸ Display ▸ Graphics Controller: VMSVGA**, **Enable 3D Acceleration** and
+  128 MB of video memory. Without 3D acceleration the display can't use the graphics card, so Kiosk draws in
+  software (`kiosk status` says *drawing without graphics acceleration*): the page shows, but video isn't smooth.
+- **"drawing without graphics acceleration"** on a real computer means its graphics have no working driver. The page
+  still shows; `sudo kiosk logs` has the display server's messages from the first try.
 - **Changing Wi-Fi:** use the distribution's own tool, such as `sudo nmtui` where NetworkManager is installed
   (Raspberry Pi OS, Fedora and most desktops) or `sudo raspi-config` on a Raspberry Pi. Kiosk leaves the network
   settings alone.

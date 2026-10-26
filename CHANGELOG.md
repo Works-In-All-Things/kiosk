@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.2.2
+
+- **Shows a page even without graphics acceleration.** When the display can't start with acceleration (a VirtualBox
+  VM without 3D acceleration, or graphics without a working driver), it used to stop and start again every few
+  seconds on a black screen. Now it starts again drawing in software, so the page shows; video is less smooth.
+  `kiosk status` says so, and each restart tries acceleration again first.
+- **`kiosk logs` shows why the display stopped.** The display server's own errors now always appear, with a line
+  such as *The display stopped (code 1)*. Before, they could be missing when it stopped at once.
+- **`kiosk status` explains a browser that won't start:** *not starting: it has stopped 12 times (see kiosk logs)*,
+  instead of *not running (activating)*.
+- The installer warns when the computer has no graphics device (`/dev/dri/card*`), as on a virtual machine without
+  a display, because the screen would stay black.
+
 ## 1.2.1
 
 - **Waits for a real page at start-up.** Kiosk already waited up to 90 seconds for the address to answer; now an
