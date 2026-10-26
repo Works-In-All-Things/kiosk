@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.1
+
+- **Waits for a real page at start-up.** Kiosk already waited up to 90 seconds for the address to answer; now an
+  error page (HTTP 500 and up, such as a Rock server that's restarting) doesn't count, so the browser opens once the
+  server is ready. `kiosk logs` shows what the address answered.
+
 ## 1.2.0
 
 - **Remote control over VNC.** `sudo kiosk vnc on` lets you see and use the kiosk's screen, keyboard and mouse

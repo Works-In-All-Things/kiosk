@@ -31,6 +31,7 @@ Write each result in the tables at the end: ✓, ✗ (with a note), or – for n
 |---|---|---|
 | 3.1 | Pull the power while it plays; plug it back in. | It plays again with no "Restore pages?" bubble. |
 | 3.2 | On Ctrl+Alt+F2, log in and run `sudo pkill chromium` (Flathub browser: `sudo pkill -f org.chromium`). | Back within about 10 seconds. |
+| 3.2a | `sudo kiosk url https://httpbin.org/status/503`, wait 2 minutes, then `sudo kiosk logs`. Put the address back with `sudo kiosk url <your address>` and check `sudo kiosk logs` again. | First: *…still answered with an error (HTTP 503) after 90 seconds; starting the browser anyway.* Then: *…answered (HTTP 200) after 0 seconds or so.* |
 | 3.3 | Turn on with the network unplugged (before Signage ever stored anything, use a fresh install). | It waits about 90 seconds with the logo on the screen, then shows the browser's offline page. Plug in the network: it loads within a minute or two (or after `sudo kiosk restart`). |
 
 ## 4. Settings

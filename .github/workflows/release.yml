@@ -1,0 +1,48 @@
+# Publishes a GitHub release when a merge to main changes VERSION: it tags that exact commit v<VERSION> and uses the
+# version's section of CHANGELOG.md as the notes. "kiosk update" and the installer download the latest release.
+# It does nothing when the release already exists, and it can also be run by hand (Actions ▸ Release ▸ Run workflow).
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths: [VERSION]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publish the release for VERSION
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(tr -d '[:space:]' < VERSION)
+          tag="v$version"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "$tag is already released; nothing to do."
+            exit 0
+          fi
+          # The CHANGELOG section for this version, with each wrapped item joined onto one line (GitHub shows line
+          # breaks in release notes as they are).
+          awk -v heading="## $version" '
+            $0 == heading { found = 1; next }
+            found && /^## / { exit }
+            !found { next }
+            /^$/ { if (item != "") print item; item = ""; print ""; next }
+            /^ +[^ -]/ && item != "" { sub(/^ +/, " "); item = item $0; next }
+            { if (item != "") print item; item = $0 }
+            END { if (item != "") print item }
+          ' CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "CHANGELOG.md has no \"## $version\" section, so there's nothing to release."
+            exit 1
+          fi
+          printf '\nUpdate a kiosk with `sudo kiosk update`.\n' >> notes.md
+          gh release create "$tag" --target "$GITHUB_SHA" --title "Kiosk $version" --notes-file notes.md

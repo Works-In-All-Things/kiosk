@@ -9,18 +9,28 @@ ROTATION=0
 # shellcheck source=/dev/null
 [[ -r /etc/kiosk/kiosk.conf ]] && . /etc/kiosk/kiosk.conf
 
-# Waits up to 90 seconds for the address to answer, so a TV that powers up with the network gives it time to
-# connect. It carries on anyway after that: a Signage player that was stored for offline plays without the network.
-# This runs before cage, so the start-up screen's logo stays up meanwhile.
+# Waits up to 90 seconds for the address to give a real page, so a TV that powers up with the network gives it
+# time to connect, and a server that's starting up or restarting (such as Rock after an app pool recycle, which
+# answers with a 5xx error page meanwhile) has time to be ready. Any answer below 500 counts: a page, a redirect,
+# or a "not found" that waiting won't fix. It carries on anyway after 90 seconds: a Signage player that was stored
+# for offline plays without the network. It logs what it got (see "kiosk logs"). This runs before cage, so the
+# start-up screen's logo stays up meanwhile.
 wait_for_network() {
-    local attempt
+    local attempt status=000
     for attempt in $(seq 1 18); do
-        if curl --silent --globoff --output /dev/null --max-time 5 "$URL"; then
+        status=$(curl --silent --globoff --output /dev/null --max-time 5 --write-out '%{http_code}' "$URL" || true)
+        status=${status:-000}
+        if [[ $status =~ ^[1-4][0-9][0-9]$ ]]; then
+            echo "$URL answered (HTTP $status) after $(((attempt - 1) * 5)) seconds or so."
             return 0
         fi
         [[ $attempt -lt 18 ]] && sleep 5
     done
-    echo "$URL didn't answer within 90 seconds; starting the browser anyway." >&2
+    if [[ $status == 000 ]]; then
+        echo "$URL didn't answer within 90 seconds; starting the browser anyway." >&2
+    else
+        echo "$URL still answered with an error (HTTP $status) after 90 seconds; starting the browser anyway." >&2
+    fi
 }
 
 [[ -z $URL ]] || wait_for_network
