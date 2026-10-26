@@ -211,7 +211,8 @@ fit.
   the first screen. A systemd service (`kiosk.service`) starts it at boot and again within seconds if it closes.
 - Chromium runs as a `kiosk` user that has no password and can't log in. Its data is kept in `/var/lib/kiosk`, so
   Signage's offline storage survives restarts: a TV that's turned on with no network still plays.
-- At start-up it waits up to 90 seconds for the address to answer (with the logo on the screen), then opens it
+- At start-up it waits up to 90 seconds for the address to answer with a page (with the logo on the screen), so a
+  server that's restarting, which answers with an error meanwhile, has time to be ready. Then it opens it
   either way.
 - There are no first-run screens, "Restore pages?" bubbles, translate bars or update nags, and videos play with
   sound without a click.
@@ -273,6 +274,8 @@ cage, Chromium and Plymouth, in place.
 - From a copy of this repository, `sudo ./install.sh` installs that copy.
 - To install a branch for testing: `curl -fsSL … | KIOSK_REF=<branch> bash`.
 - The release test is in [TESTING.md](TESTING.md).
+- **Releases:** set `VERSION` and add its section to CHANGELOG.md. When that reaches `main`, the *Release* workflow
+  (`.github/workflows/release.yml`) tags the merge `v<VERSION>` and publishes the release with those notes.
 
 ## License
 
