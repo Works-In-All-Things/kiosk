@@ -105,7 +105,7 @@ goes back), or connect over SSH if you've set it up.
 
 ## Managed by Rock
 
-With the [**Screen Manager**](https://worksinallthings.com/plugins/screen-manager/) plugin for Rock RMS, you can
+With the [**Screen Manager**](https://worksinallthings.com/plugins/kiosk-manager/) plugin for Rock RMS, you can
 manage your kiosks from Rock instead of at each computer: see every one's health, change what it shows and when its
 screen turns off, and restart or reboot it. In Rock they're called *screens*, because in Rock a kiosk means a check-in
 device. Kiosk works on its own without it; managing it is optional. (The plugin was called *Kiosk Manager* until
