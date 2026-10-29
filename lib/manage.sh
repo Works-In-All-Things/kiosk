@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# Works In All Things Kiosk: management from Rock, with the Kiosk Manager plugin. Sourced by the kiosk command.
+# Works In All Things Kiosk: management from Rock, with the Screen Manager plugin. Sourced by the kiosk command.
 #
 # The kiosk asks Rock; Rock never connects to the kiosk. Once a minute kiosk-heartbeat.timer runs "kiosk heartbeat",
 # which sends the computer's health to Rock and gets back its settings (when they changed) and any actions. Rock can
@@ -8,7 +8,10 @@
 
 MANAGER_CONF=$CONFIG_DIR/manager.conf
 MANAGER_STATE=$CONFIG_DIR/manager-state
-MANAGER_API=api/v2/plugins/com.worksinallthings/kioskmanager
+# The plugin's API. It was named Kiosk Manager until October 2026, and its address then still answers too, so a Rock
+# with the old plugin keeps working; rock_post tries the other address on 404 and remembers the one that answers.
+MANAGER_API=api/v2/plugins/com.worksinallthings/screenmanager
+LEGACY_MANAGER_API=api/v2/plugins/com.worksinallthings/kioskmanager
 # Present while the screen has been turned off by hand or by Rock, so a heartbeat can tell that from a crash.
 SCREEN_OFF_FLAG=/run/kiosk-screen-off
 LOCK_FILE=/run/kiosk.lock
@@ -65,15 +68,36 @@ set_state() {
 
 # Talking to Rock ---------------------------------------------------------------------------------------------
 
-# Sends a JSON body to one of Kiosk Manager's endpoints. Sets RESPONSE_STATUS (000 when Rock couldn't be reached)
-# and RESPONSE_BODY. The body goes on standard input, so the token never shows in the process list.
+# Sends a JSON body to one of Screen Manager's endpoints. Sets RESPONSE_STATUS (000 when Rock couldn't be reached)
+# and RESPONSE_BODY. It uses the API address that answered last; on a 404 it tries the other one (the plugin's old
+# name) and remembers it if that answers.
 rock_post() {
-    local address=$1 endpoint=$2 body=$3 allow_http=$4 output
+    local address=$1 endpoint=$2 body=$3 allow_http=$4 api other
+    api=$(get_state api)
+    [[ $api == "$MANAGER_API" || $api == "$LEGACY_MANAGER_API" ]] || api=$MANAGER_API
+    rock_post_to "$address/$api/$endpoint" "$body" "$allow_http"
+    [[ $RESPONSE_STATUS == 404 ]] || return 0
+    other=$MANAGER_API
+    [[ $api == "$MANAGER_API" ]] && other=$LEGACY_MANAGER_API
+    local first_status=$RESPONSE_STATUS first_body=$RESPONSE_BODY
+    rock_post_to "$address/$other/$endpoint" "$body" "$allow_http"
+    if [[ $RESPONSE_STATUS == 404 ]]; then
+        RESPONSE_STATUS=$first_status
+        RESPONSE_BODY=$first_body
+    else
+        set_state api "$other"
+    fi
+}
+
+# Sends a JSON body to one address. Sets RESPONSE_STATUS and RESPONSE_BODY. The body goes on standard input, so the
+# token never shows in the process list.
+rock_post_to() {
+    local url=$1 body=$2 allow_http=$3 output
     local -a protocols=(--proto "=https" --proto-redir "=https")
     [[ $allow_http == yes ]] && protocols=(--proto "=https,http" --proto-redir "=https,http")
     if output=$(printf '%s' "$body" | curl -sS --max-time 20 "${protocols[@]}" -X POST \
         -H 'Content-Type: application/json' -H 'Accept: application/json' \
-        --data-binary @- -w '\n%{http_code}' "$address/$MANAGER_API/$endpoint" 2>&1); then
+        --data-binary @- -w '\n%{http_code}' "$url" 2>&1); then
         RESPONSE_STATUS=${output##*$'\n'}
         RESPONSE_BODY=${output%$'\n'*}
     else
@@ -94,7 +118,7 @@ rock_message() {
     elif [[ $RESPONSE_STATUS == bad-answer ]]; then
         printf '%s' "$RESPONSE_BODY"
     elif [[ $RESPONSE_STATUS == 404 ]]; then
-        printf 'Rock answered 404. Check the address, and that the Kiosk Manager plugin is installed.'
+        printf 'Rock answered 404. Check the address, and that the Screen Manager plugin is installed.'
     else
         printf 'Rock answered %s.' "$RESPONSE_STATUS"
     fi
@@ -345,10 +369,10 @@ send_heartbeat() {
     body=$(heartbeat_body "$token")
     rock_post "$address" heartbeat "$body" "$allow_http"
 
-    # Only an answer from Kiosk Manager itself counts: a captive portal or proxy can answer 200 or 401 too.
+    # Only an answer from Screen Manager itself counts: a captive portal or proxy can answer 200 or 401 too.
     if [[ $RESPONSE_STATUS == 200 ]] && ! jq -e '.heartbeatSeconds | numbers' >/dev/null 2>&1 <<<"$RESPONSE_BODY"; then
         RESPONSE_STATUS=bad-answer
-        RESPONSE_BODY="Rock's answer wasn't from Kiosk Manager. Check the Rock address."
+        RESPONSE_BODY="Rock's answer wasn't from Screen Manager. Check the Rock address."
     elif [[ $RESPONSE_STATUS == 401 ]] && ! jq -e '.message | strings' >/dev/null 2>&1 <<<"$RESPONSE_BODY"; then
         RESPONSE_STATUS=bad-answer
         RESPONSE_BODY="Something between this computer and Rock refused the heartbeat (401). Check the Rock address."

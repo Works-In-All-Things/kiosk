@@ -67,7 +67,7 @@ Write each result in the tables at the end: ✓, ✗ (with a note), or – for n
 
 ## 7. Managed by Rock
 
-Needs the Kiosk Manager plugin on the Rock dev site (its TESTING.md has the Rock side).
+Needs the Screen Manager plugin (formerly Kiosk Manager) on the Rock dev site (its TESTING.md has the Rock side).
 
 | # | Do this | You should see |
 |---|---|---|
@@ -82,6 +82,7 @@ Needs the Kiosk Manager plugin on the Rock dev site (its TESTING.md has the Rock
 | 7.9 | In Rock, press Make New Code. | Within a minute the kiosk stops sending heartbeats and `kiosk status` says *Managed by Rock: no longer*. It keeps showing the same address. Link it again with the new code (7.2). |
 | 7.10 | `sudo kiosk unmanage`, then `sudo kiosk url https://example.org`. | The settings stay; the address change now works. |
 | 7.11 | Link it again, then `sudo kiosk uninstall`. | `/etc/kiosk` is gone, including the token, and `kiosk-heartbeat.timer` no longer exists. |
+| 7.12 | On a kiosk managed by a Rock that still has the old *Kiosk Manager* plugin, `sudo kiosk update` to this version. Wait 2 minutes. | Rock still shows it **Online**, and its actions still work: Kiosk called Screen Manager's new address, got *not found*, and switched to the old one (`sudo cat /etc/kiosk/manager-state/api` shows `…/kioskmanager`). |
 
 ## 8. Start-up screen
 

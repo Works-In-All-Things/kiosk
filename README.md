@@ -105,12 +105,13 @@ goes back), or connect over SSH if you've set it up.
 
 ## Managed by Rock
 
-With the [**Kiosk Manager**](https://worksinallthings.com/plugins/kiosk-manager/) plugin for Rock RMS (on the
-[Rock Shop](https://www.rockrms.com/rockshop/plugin/233)), you can manage your kiosks from Rock instead of at each
-computer: see every kiosk's health, change what it shows and when its screen turns off, and restart or reboot it.
-Kiosk works on its own without it; managing it is optional.
+With the [**Screen Manager**](https://worksinallthings.com/plugins/screen-manager/) plugin for Rock RMS, you can
+manage your kiosks from Rock instead of at each computer: see every one's health, change what it shows and when its
+screen turns off, and restart or reboot it. In Rock they're called *screens*, because in Rock a kiosk means a check-in
+device. Kiosk works on its own without it; managing it is optional. (The plugin was called *Kiosk Manager* until
+October 2026; Kiosk works with either.)
 
-1. In Rock, add the kiosk (**Admin Tools ▸ Installed Plugins ▸ Kiosk Manager ▸ Kiosks ▸ Add**). Rock shows a
+1. In Rock, add the screen (**Admin Tools ▸ Installed Plugins ▸ Screen Manager ▸ Screens ▸ Add**). Rock shows a
    one-line command with a single-use code, which works for 24 hours.
 2. On a new computer, paste the install command. It installs Kiosk without asking any questions: the address,
    time zone, rotation, screen times and nightly restart come from Rock. On a computer that already runs Kiosk, run

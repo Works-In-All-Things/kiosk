@@ -1600,7 +1600,7 @@ cmd_help() {
     help_line "kiosk status" "Show what the kiosk is doing"
     help_line "${s}kiosk logs" "Show recent messages"
     help_line "${s}kiosk update [branch or tag]" "Update Kiosk to the latest release (or a branch or tag)"
-    help_line "${s}kiosk manage <rock address> <code>" "Let Rock manage this kiosk (Kiosk Manager plugin)"
+    help_line "${s}kiosk manage <rock address> <code>" "Let Rock manage this kiosk (Screen Manager plugin)"
     help_line "${s}kiosk unmanage" "Stop Rock managing this kiosk"
     help_line "${s}kiosk uninstall" "Remove Kiosk"
     [[ -n $s ]] || echo "  (This computer has no sudo: run the commands as root, after su -.)"

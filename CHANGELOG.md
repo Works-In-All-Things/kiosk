@@ -10,6 +10,8 @@
   such as *The display stopped (code 1)*. Before, they could be missing when it stopped at once.
 - **`kiosk status` explains a browser that won't start:** *not starting: it has stopped 12 times (see kiosk logs)*,
   instead of *not running (activating)*.
+- **Works with Screen Manager,** the Rock plugin's new name (it was Kiosk Manager): Kiosk calls its new address, and
+  falls back to the old one, so it works with either plugin.
 - The installer warns when the computer has no graphics device (`/dev/dri/card*`), as on a virtual machine without
   a display, because the screen would stay black.
 
