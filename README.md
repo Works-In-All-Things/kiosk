@@ -105,12 +105,13 @@ goes back), or connect over SSH if you've set it up.
 
 ## Managed by Rock
 
-With the [**Kiosk Manager**](https://worksinallthings.com/plugins/kiosk-manager/) plugin for Rock RMS (on the
-[Rock Shop](https://www.rockrms.com/rockshop/plugin/233)), you can manage your kiosks from Rock instead of at each
-computer: see every kiosk's health, change what it shows and when its screen turns off, and restart or reboot it.
-Kiosk works on its own without it; managing it is optional.
+With the [**Screen Manager**](https://worksinallthings.com/plugins/kiosk-manager/) plugin for Rock RMS, you can
+manage your kiosks from Rock instead of at each computer: see every one's health, change what it shows and when its
+screen turns off, and restart or reboot it. In Rock they're called *screens*, because in Rock a kiosk means a check-in
+device. Kiosk works on its own without it; managing it is optional. (The plugin was called *Kiosk Manager* until
+October 2026; Kiosk works with either.)
 
-1. In Rock, add the kiosk (**Admin Tools ▸ Installed Plugins ▸ Kiosk Manager ▸ Kiosks ▸ Add**). Rock shows a
+1. In Rock, add the screen (**Admin Tools ▸ Installed Plugins ▸ Screen Manager ▸ Screens ▸ Add**). Rock shows a
    one-line command with a single-use code, which works for 24 hours.
 2. On a new computer, paste the install command. It installs Kiosk without asking any questions: the address,
    time zone, rotation, screen times and nightly restart come from Rock. On a computer that already runs Kiosk, run
@@ -211,6 +212,8 @@ fit.
   the first screen. A systemd service (`kiosk.service`) starts it at boot and again within seconds if it closes.
 - Chromium runs as a `kiosk` user that has no password and can't log in. Its data is kept in `/var/lib/kiosk`, so
   Signage's offline storage survives restarts: a TV that's turned on with no network still plays.
+- If the display can't start with graphics acceleration, it starts again drawing in software (see
+  *Troubleshooting*). Each restart of the computer tries acceleration first.
 - At start-up it waits up to 90 seconds for the address to answer with a page (with the logo on the screen), so a
   server that's restarting, which answers with an error meanwhile, has time to be ready. Then it opens it
   either way.
@@ -248,6 +251,11 @@ cage, Chromium and Plymouth, in place.
   `su -` to become root, then run the command without `sudo`. To use sudo instead, install it as root with
   `apt install sudo`, add yourself with `usermod -aG sudo yourname`, and log in again.
 - **Black screen:** run `kiosk status` and `sudo kiosk logs`. Check the address opens in a normal browser.
+- **VirtualBox:** give the VM **Settings ▸ Display ▸ Graphics Controller: VMSVGA**, **Enable 3D Acceleration** and
+  128 MB of video memory. Without 3D acceleration the display can't use the graphics card, so Kiosk draws in
+  software (`kiosk status` says *drawing without graphics acceleration*): the page shows, but video isn't smooth.
+- **"drawing without graphics acceleration"** on a real computer means its graphics have no working driver. The page
+  still shows; `sudo kiosk logs` has the display server's messages from the first try.
 - **Changing Wi-Fi:** use the distribution's own tool, such as `sudo nmtui` where NetworkManager is installed
   (Raspberry Pi OS, Fedora and most desktops) or `sudo raspi-config` on a Raspberry Pi. Kiosk leaves the network
   settings alone.

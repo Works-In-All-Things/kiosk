@@ -14,6 +14,7 @@ Write each result in the tables at the end: ✓, ✗ (with a note), or – for n
 | 1.3 | Restart. | The address fills the screen within a minute of power-on: no login, desktop, bars, bubbles or pop-ups. No mouse pointer (unless a mouse is plugged in). |
 | 1.4 | On a computer with a desktop installed, run the installer. | It asks to turn the desktop off. After the restart the kiosk shows instead of the login screen. |
 | 1.5 | Run the installer again and press Enter at every question. | Nothing changes; the kiosk still works. |
+| 1.5a | In a virtual machine with no display (Proxmox: Display *none*; or a VM whose graphics have no driver), run the installer. | A warning that the computer has no graphics device and the screen will stay black; the install carries on. |
 | 1.6 | **Debian with a root password set** (no sudo or curl): run `wget -qO- https://worksinallthings.com/kiosk/install.sh \| bash` as your user. Then `su` (plain, without `-`) and run it again. Afterwards, as your user, `kiosk url https://example.org`. | As your user: *sudo isn't installed … Become root with: su -*. As root it installs as in 1.1, with no *command not found* errors (plain `su` leaves `/usr/sbin` off the PATH; Kiosk adds it). The `kiosk` command says *Run this as root: su -*. The installer's last lines, `kiosk help` and the other hints show `kiosk …` without `sudo`, and `kiosk help` says the computer has no sudo. |
 
 ## 2. Playing
@@ -32,6 +33,8 @@ Write each result in the tables at the end: ✓, ✗ (with a note), or – for n
 | 3.1 | Pull the power while it plays; plug it back in. | It plays again with no "Restore pages?" bubble. |
 | 3.2 | On Ctrl+Alt+F2, log in and run `sudo pkill chromium` (Flathub browser: `sudo pkill -f org.chromium`). | Back within about 10 seconds. |
 | 3.2a | `sudo kiosk url https://httpbin.org/status/503`, wait 2 minutes, then `sudo kiosk logs`. Put the address back with `sudo kiosk url <your address>` and check `sudo kiosk logs` again. | First: *…still answered with an error (HTTP 503) after 90 seconds; starting the browser anyway.* Then: *…answered (HTTP 200) after 0 seconds or so.* |
+| 3.2b | **Software drawing** (needs a VirtualBox VM): power it off, untick **Enable 3D Acceleration** (Settings ▸ Display), start it. Then `kiosk status` and `sudo kiosk logs`. Power off, tick it again, start. | Without 3D: the logo, then the page within about 10 seconds. *Browser: running, drawing without graphics acceleration*; the log has cage's *Unable to create the wlroots renderer*, then *…starts again without it* and *Drawing without graphics acceleration…*. With 3D again: *Browser: running*, with no note. |
+| 3.2c | Make the display fail: `sudo mv /usr/bin/cage /usr/bin/cage.off`. Wait 30 seconds, then `kiosk status` and `sudo kiosk logs`. Put cage back with `sudo mv /usr/bin/cage.off /usr/bin/cage` and `sudo kiosk restart`. | *Browser: not starting: it has stopped N times (see kiosk logs)*, and the log says why (*cage: command not found* and *The display stopped (code 127)*). After putting cage back it plays again. |
 | 3.3 | Turn on with the network unplugged (before Signage ever stored anything, use a fresh install). | It waits about 90 seconds with the logo on the screen, then shows the browser's offline page. Plug in the network: it loads within a minute or two (or after `sudo kiosk restart`). |
 
 ## 4. Settings
@@ -64,7 +67,7 @@ Write each result in the tables at the end: ✓, ✗ (with a note), or – for n
 
 ## 7. Managed by Rock
 
-Needs the Kiosk Manager plugin on the Rock dev site (its TESTING.md has the Rock side).
+Needs the Screen Manager plugin (formerly Kiosk Manager) on the Rock dev site (its TESTING.md has the Rock side).
 
 | # | Do this | You should see |
 |---|---|---|
@@ -79,6 +82,7 @@ Needs the Kiosk Manager plugin on the Rock dev site (its TESTING.md has the Rock
 | 7.9 | In Rock, press Make New Code. | Within a minute the kiosk stops sending heartbeats and `kiosk status` says *Managed by Rock: no longer*. It keeps showing the same address. Link it again with the new code (7.2). |
 | 7.10 | `sudo kiosk unmanage`, then `sudo kiosk url https://example.org`. | The settings stay; the address change now works. |
 | 7.11 | Link it again, then `sudo kiosk uninstall`. | `/etc/kiosk` is gone, including the token, and `kiosk-heartbeat.timer` no longer exists. |
+| 7.12 | On a kiosk managed by a Rock that still has the old *Kiosk Manager* plugin, `sudo kiosk update` to this version. Wait 2 minutes. | Rock still shows it **Online**, and its actions still work: Kiosk called Screen Manager's new address, got *not found*, and switched to the old one (`sudo cat /etc/kiosk/manager-state/api` shows `…/kioskmanager`). |
 
 ## 8. Start-up screen
 

@@ -99,7 +99,7 @@ native_chromium_package() {
 }
 
 # The packages Kiosk can't work without: the cage display server, Xwayland for older apps, curl, and jq (for
-# talking to Rock when the kiosk is managed by the Kiosk Manager plugin).
+# talking to Rock when the kiosk is managed by the Screen Manager plugin).
 required_packages() {
     case $DISTRO_FAMILY in
         apt) printf '%s\n' cage xwayland curl ca-certificates jq ;;
